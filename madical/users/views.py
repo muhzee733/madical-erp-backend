@@ -81,7 +81,6 @@ class PatientDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsPatient]
 
     def get(self, request):
-        print(request)
         return Response({
             "message": "Welcome to the Patient Dashboard",
             "user": {

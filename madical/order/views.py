@@ -10,9 +10,43 @@ from appointment.models import AppointmentAvailability
 from users.permissions import IsPatient
 from .serializers import OrderSerializer
 from chat.models import ChatRoom
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-# stripe.api_key = settings.STRIPE_WEBHOOK_SECRET
+endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
+
+@csrf_exempt
+def stripe_webhook(request):
+    payload = request.body
+    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
+    
+    event = None
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
+        )
+    except ValueError:
+        return JsonResponse({'status': 'Invalid payload'}, status=400)
+    except stripe.error.SignatureVerificationError:
+        return JsonResponse({'status': 'Invalid signature'}, status=400)
+    print("Webhook received", event)
+
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        order_id = session['metadata'].get('order_id')
+        payment_intent = session.get('payment_intent')
+
+        try:
+            order = Order.objects.get(id=order_id)
+            order.status = 'paid'
+            order.payment_intent = payment_intent
+            order.save()
+        except Order.DoesNotExist:
+            pass  # Optionally log this
+
+    return JsonResponse({'status': 'success'}, status=200)
 
 class CreateOrderAPIView(APIView):
     permission_classes = [IsAuthenticated, IsPatient]
@@ -57,6 +91,7 @@ class CreateOrderAPIView(APIView):
                     "orderId": order.id,
                     "status": order.status
                 }, status=status.HTTP_201_CREATED)
+            
             else:
                 return Response({
                     "message": "Order creation failed.",
@@ -93,12 +128,17 @@ class CreateStripeCheckoutSession(APIView):
                     'quantity': 1,
                 }],
                 mode='payment',
-                success_url='http://localhost:3000/appointment-success?session_id={CHECKOUT_SESSION_ID}',  # Apne frontend ka success page
+                success_url = 'https://016e-176-205-175-238.ngrok-free.app/appointment-success?session_id={CHECKOUT_SESSION_ID}',
+                
                 cancel_url='http://localhost:3000/cancel',  # Apne frontend ka cancel page
                 metadata={
                     'order_id': str(order.id)
                 }
             )
+            order.stripe_session_id = session.id
+            order.payment_intent = session.payment_intent
+            order.save()
+      
 
             return Response({'checkout_url': session.url})
         except Exception as e:
@@ -129,3 +169,36 @@ class OrderListAPIView(APIView):
 
         except Exception as e:
             return Response({"message": "Error while fetching orders.", "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class StripeSessionSuccessAPIView(APIView):
+    def get(self, request):
+        session_id = request.GET.get('session_id')
+
+        if not session_id:
+            return Response({'error': 'Missing session_id'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Get session and payment info from Stripe
+            session = stripe.checkout.Session.retrieve(session_id)
+            order = Order.objects.get(stripe_session_id=session.id)
+
+            appointment = order.appointment
+
+            return Response({
+                'amount': str(order.amount),
+                'name': order.user.first_name + ' ' + order.user.last_name,
+                'contact': order.user.email, 
+                'details': [
+                    {
+                        'title': f'Appointment with {appointment.doctor.first_name}',
+                        'date': f' {appointment.date}',
+                        'start_time': f' {appointment.start_time}',
+                        'amount': str(order.amount)
+                    }
+                ]
+            }, status=status.HTTP_200_OK)
+
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-dg2l361r(9oe(8d*su+fr30bny(!4%x$$_rvsc=*8p1h)$z1uo
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 
 
@@ -94,14 +94,16 @@ CHANNEL_LAYERS = {
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+print("DB_HOST =", os.getenv('DB_HOST'))
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST'),
-        'PORT': os.getenv('DB_PORT'),
+        'NAME': 'madical_database',
+        'USER':  'root',
+        'PASSWORD': '',
+        'HOST': "localhost",
+        'PORT': '3306'
     }
 }
 
@@ -166,7 +168,7 @@ SIMPLE_JWT = {
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
-
+FRONTEND_URL = os.getenv('PUBLIC_URL')
 
 
 # Static files (CSS, JavaScript, Images)

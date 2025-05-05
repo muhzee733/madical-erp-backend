@@ -14,12 +14,13 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
+endpoint_secret = 'whsec_RYQRvalTOecFccc9gtYSmV3GUntjYAQY'
 
 @csrf_exempt
 def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
+    print(endpoint_secret, 'ss')
     
     event = None
 

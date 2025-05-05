@@ -14,9 +14,6 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 load_dotenv()
-STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
-STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
-STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 
 from datetime import timedelta
 
@@ -181,6 +178,10 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=10)
 }
+
+print("Stripe Secret Key:", os.getenv('STRIPE_SECRET_KEY'))
+print("Stripe Public Key:", os.getenv('STRIPE_PUBLIC_KEY'))
+print("Stripe Webhook Secret:", os.getenv('STRIPE_WEBHOOK_SECRET'))
 
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')

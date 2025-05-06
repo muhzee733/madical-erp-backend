@@ -2,9 +2,10 @@
 from pathlib import Path
 import os
 from datetime import timedelta
-
+from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv()
 
 
 
@@ -167,6 +168,7 @@ SIMPLE_JWT = {
 
 
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+print(os.getenv("STRIPE_SECRET_KEY"), 'setting')
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 PUBLIC_URL = os.getenv('PUBLIC_URL')

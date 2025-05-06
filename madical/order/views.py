@@ -12,9 +12,9 @@ from .serializers import OrderSerializer
 from chat.models import ChatRoom
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+import os
 
-stripe.api_key = settings.STRIPE_SECRET_KEY
-print("Stripe key:", settings.STRIPE_SECRET_KEY)
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 endpoint_secret = 'whsec_RYQRvalTOecFccc9gtYSmV3GUntjYAQY'
 
 @csrf_exempt

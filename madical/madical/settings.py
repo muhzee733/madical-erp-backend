@@ -71,15 +71,14 @@ CHANNEL_LAYERS = {
     },
 }
 
-# Database
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'madical',
-        'USER': 'admin',
-        'PASSWORD': 'Mv8XV4cDx8uwN9OFpgfx',
+        'USER':  'admin',
+        'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
         'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
-        'PORT': '3306',
+        'PORT': '3306'
     }
 }
 

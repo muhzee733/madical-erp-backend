@@ -6,11 +6,10 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env(
-    DEBUG=(bool, False)
-)
+env = environ.Env()
 
-environ.Env.read_env('/home/ubuntu/madical-erp-backend/.env')
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -20,7 +19,6 @@ SECRET_KEY = 'django-insecure-dg2l361r(9oe(8d*su+fr30bny(!4%x$$_rvsc=*8p1h)$z1uo
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
-ENVIRONMENT = env('ENVIRONMENT')
 
 ALLOWED_HOSTS = ["*"]
 
@@ -166,9 +164,6 @@ SIMPLE_JWT = {
 
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY')
 print(STRIPE_SECRET_KEY, 'settings')
-
-if DEBUG:
-    print("Stripe Key:", STRIPE_SECRET_KEY)
 
 STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET')

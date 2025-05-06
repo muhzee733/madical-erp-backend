@@ -2,11 +2,14 @@
 from pathlib import Path
 import os
 from datetime import timedelta
-from dotenv import load_dotenv
+import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv()
+env = environ.Env(
+    DEBUG=(bool, False)
+)
 
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 
 # Quick-start development settings - unsuitable for production
@@ -16,7 +19,8 @@ load_dotenv()
 SECRET_KEY = 'django-insecure-dg2l361r(9oe(8d*su+fr30bny(!4%x$$_rvsc=*8p1h)$z1uo'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG')
+ENVIRONMENT = env('ENVIRONMENT')
 
 ALLOWED_HOSTS = ["*"]
 
@@ -167,11 +171,14 @@ SIMPLE_JWT = {
 }
 
 
-STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
-print(os.getenv("STRIPE_SECRET_KEY"), 'setting')
-STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
-STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
-PUBLIC_URL = os.getenv('PUBLIC_URL')
+STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY')
+print(STRIPE_SECRET_KEY, 'settings')
+
+if DEBUG:
+    print("Stripe Key:", STRIPE_SECRET_KEY)
+    
+STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET')
 
 
 # Static files (CSS, JavaScript, Images)

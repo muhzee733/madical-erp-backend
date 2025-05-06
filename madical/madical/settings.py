@@ -75,7 +75,7 @@ CHANNEL_LAYERS = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'database-2',
+        'NAME': 'madical',
         'USER': 'admin',
         'PASSWORD': 'Mv8XV4cDx8uwN9OFpgfx',
         'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',

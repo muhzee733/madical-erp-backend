@@ -5,12 +5,12 @@ from datetime import timedelta
 import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 env = environ.Env(
     DEBUG=(bool, False)
 )
 
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-
+environ.Env.read_env('/home/ubuntu/madical-erp-backend/.env')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -136,23 +136,16 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-DEBUG = True
-
 USE_TZ = True
 APPEND_SLASH = False
-
-
 AUTH_USER_MODEL = 'users.User'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://madical-erp-s3.s3-website.eu-north-1.amazonaws.com/"
 ]
-CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [
@@ -176,7 +169,7 @@ print(STRIPE_SECRET_KEY, 'settings')
 
 if DEBUG:
     print("Stripe Key:", STRIPE_SECRET_KEY)
-    
+
 STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET')
 

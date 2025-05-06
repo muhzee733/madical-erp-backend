@@ -6,15 +6,11 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables
-env = environ.Env()
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-dg2l361r(9oe(8d*su+fr30bny(!4%x$$_rvsc=*8p1h)$z1uo'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env.bool("DEBUG", default=False)
 
 ALLOWED_HOSTS = ["*"]
 
@@ -79,11 +75,11 @@ CHANNEL_LAYERS = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': env('DB_NAME'),
-        'USER': env('DB_USER'),
-        'PASSWORD': env('DB_PASSWORD'),
-        'HOST': env('DB_HOST'),
-        'PORT': env('DB_PORT'),
+        'NAME': 'database-2',
+        'USER': 'admin',
+        'PASSWORD': 'Mv8XV4cDx8uwN9OFpgfx',
+        'HOST': 'database-2.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
+        'PORT': '3306',
     }
 }
 
@@ -108,6 +104,7 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
+DEBUG= True
 APPEND_SLASH = False
 
 # Custom User Model
@@ -135,11 +132,6 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=10)
 }
-
-# Stripe
-STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
-STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY', default='')
-STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
 
 
 # Static files

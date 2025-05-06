@@ -168,7 +168,7 @@ SIMPLE_JWT = {
 
 
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
-print(os.getenv("STRIPE_SECRET_KEY"), 'settings')
+print(os.getenv("STRIPE_SECRET_KEY"), 'setting')
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 PUBLIC_URL = os.getenv('PUBLIC_URL')

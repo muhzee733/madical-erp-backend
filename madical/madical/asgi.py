@@ -1,8 +1,10 @@
 import os
-import django  # ✅ Required
+import django 
+from dotenv import load_dotenv
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'madical.settings')
-django.setup()  # ✅ Required
+django.setup() 
+load_dotenv()
 
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack

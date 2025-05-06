@@ -14,7 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 import os
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key = ''
 endpoint_secret = 'whsec_RYQRvalTOecFccc9gtYSmV3GUntjYAQY'
 
 @csrf_exempt

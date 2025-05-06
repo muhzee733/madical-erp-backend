@@ -1,14 +1,12 @@
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
 from datetime import timedelta
-import environ
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-env = environ.Env()
-
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+load_dotenv(dotenv_path=BASE_DIR.parent / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -18,7 +16,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = 'django-insecure-dg2l361r(9oe(8d*su+fr30bny(!4%x$$_rvsc=*8p1h)$z1uo'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env('DEBUG')
+DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
@@ -134,16 +132,23 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
+
 TIME_ZONE = 'UTC'
+
 USE_I18N = True
+DEBUG = True
+
 USE_TZ = True
 APPEND_SLASH = False
+
+
 AUTH_USER_MODEL = 'users.User'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://madical-erp-s3.s3-website.eu-north-1.amazonaws.com/"
 ]
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [
@@ -162,11 +167,10 @@ SIMPLE_JWT = {
 }
 
 
-STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY')
-print(STRIPE_SECRET_KEY, 'settings')
-
-STRIPE_PUBLIC_KEY = env('STRIPE_PUBLIC_KEY')
-STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+PUBLIC_URL = os.getenv('PUBLIC_URL')
 
 
 # Static files (CSS, JavaScript, Images)

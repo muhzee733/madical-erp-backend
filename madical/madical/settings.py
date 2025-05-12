@@ -112,7 +112,7 @@ AUTH_USER_MODEL = 'users.User'
 # CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://madical-erp-s3.s3-website.eu-north-1.amazonaws.com",
+    "https://promedicine.geeklies.xyz",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [

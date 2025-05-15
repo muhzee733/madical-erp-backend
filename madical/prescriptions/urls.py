@@ -8,7 +8,7 @@ from .views import (
 
 urlpatterns = [
     path('drugs/', DrugListCreateView.as_view(), name='drug-list-create'),
-    path('prescriptions/', PrescriptionCreateView.as_view(), name='prescription-create'),
-    path('prescriptions/list/', PrescriptionListView.as_view(), name='prescription-list'),
-    path('prescriptions/pdf/<int:prescription_id>/', download_prescription_pdf, name='prescription-pdf'),
+    path('', PrescriptionCreateView.as_view(), name='prescription-create'), 
+    path('list/', PrescriptionListView.as_view(), name='prescription-list'),
+    path('pdf/<int:prescription_id>/', download_prescription_pdf, name='prescription-pdf'),
 ]

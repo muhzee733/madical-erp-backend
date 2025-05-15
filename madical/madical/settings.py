@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'order',
     'chat',
     'channels',
+    'prescriptions'
 ]
 
 MIDDLEWARE = [

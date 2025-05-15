@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Prescription</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    h1 { text-align: center; }
+    .section { margin: 20px 0; }
+    .label { font-weight: bold; }
+    .note { color: red; font-size: 0.8em; margin-top: 30px; text-align: center; }
+    ul { padding-left: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Internal Prescription (Draft)</h1>
+
+  <div class="section">
+    <div class="label">Prescriber:</div>
+    <p>{{ doctor.get_full_name }} (ID: {{ doctor.id }})</p>
+  </div>
+
+  <div class="section">
+    <div class="label">Patient:</div>
+    <p>{{ patient.get_full_name }} (ID: {{ patient.id }})</p>
+  </div>
+
+  <div class="section">
+    <div class="label">Date:</div>
+    <p>{{ prescription.created_at|date:"d M Y" }}</p>
+  </div>
+
+  <div class="section">
+    <div class="label">Medications:</div>
+    <ul>
+      {% for item in items %}
+        <li>
+          <strong>{{ item.drug.name }}</strong> ({{ item.drug.strength }})<br>
+          Dosage: {{ item.dosage }}<br>
+          Instructions: {{ item.instructions }}<br>
+          Quantity: {{ item.quantity }} | Repeats: {{ item.repeats }}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {% if prescription.notes %}
+  <div class="section">
+    <div class="label">Notes:</div>
+    <p>{{ prescription.notes }}</p>
+  </div>
+  {% endif %}
+
+  <div class="note">
+    This is a draft prescription for internal use only. Not valid for dispensing.
+  </div>
+</body>
+</html>

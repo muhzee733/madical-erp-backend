@@ -19,8 +19,8 @@ class Prescription(models.Model):
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='prescriptions_received')
     created_at = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(blank=True)
-    signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True)  # Optional doctor signature
-    is_final = models.BooleanField(default=False)  # whether it's finalized or still draft
+    signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True)  # doctor sign
+    is_final = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Rx by Dr. {self.doctor.get_full_name()} for {self.patient.get_full_name()} on {self.created_at.date()}"
@@ -28,21 +28,12 @@ class Prescription(models.Model):
     def has_schedule_8(self):
         return any(item.drug.is_schedule_8 for item in self.prescribed_drugs.all())
 
-    def clean(self):
-        """
-        Optional: Prevent multiple Schedule 8 drugs in one prescription
-        """
-        from django.core.exceptions import ValidationError
-        s8_count = sum(1 for item in self.prescribed_drugs.all() if item.drug.is_schedule_8)
-        if s8_count > 1:
-            raise ValidationError("Only one Schedule 8 medicine is allowed per prescription.")
-
 
 class PrescriptionDrug(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='prescribed_drugs')
     drug = models.ForeignKey(Drug, on_delete=models.CASCADE)
-    dosage = models.CharField(max_length=100)  # e.g., 1 ml twice daily
-    instructions = models.TextField()  # administration directions
+    dosage = models.CharField(max_length=100)
+    instructions = models.TextField()
     quantity = models.PositiveIntegerField(default=1)
     repeats = models.PositiveIntegerField(default=0)
 

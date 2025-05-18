@@ -42,7 +42,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
-
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
@@ -50,3 +49,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.email} ({self.role})"
+
+    def get_full_name(self):
+        return f"{self.first_name} {self.last_name}"

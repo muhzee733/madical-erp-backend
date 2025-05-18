@@ -1,6 +1,8 @@
-from rest_framework import generics, permissions
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from .models import Drug, Prescription
 from .serializers import DrugSerializer, PrescriptionSerializer
@@ -11,6 +13,8 @@ from users.permissions import IsDoctor
 # --------------------
 # DRF API Views
 # --------------------
+
+from rest_framework import generics, permissions
 
 class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all()
@@ -38,18 +42,20 @@ class PrescriptionListView(generics.ListAPIView):
 
 
 # --------------------
-# PDF export View
+# PDF Export View
 # --------------------
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def download_prescription_pdf(request, prescription_id):
     prescription = get_object_or_404(Prescription, id=prescription_id)
 
-    # only doctor or admin can export prescription 
+    # Only doctor who created it or admin can access
     if request.user != prescription.doctor and not request.user.is_superuser:
-        return HttpResponse("Unauthorized", status=401)
+        return Response({"detail": "Unauthorized access"}, status=401)
 
     pdf_content = generate_prescription_pdf(prescription)
 
     response = HttpResponse(pdf_content, content_type='application/pdf')
-    response['Content-Disposition'] = f'filename="prescription_{prescription_id}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="prescription_{prescription_id}.pdf"'
     return response

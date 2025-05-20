@@ -1,45 +1,60 @@
-from rest_framework.views import APIView
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from .models import Message, ChatRoom
-from .serializers import MessageSerializer, ChatRoomSerializer
-from users.permissions import IsDoctor, IsPatient
+from django.shortcuts import get_object_or_404
+from .models import ChatRoom, Message
+from .serializers import ChatRoomSerializer, MessageSerializer
+from madical.firebase_config import get_chat_ref, get_online_status_ref
+import time
+from django.db import models
 
+class ChatRoomViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChatRoomSerializer
 
-class ChatRoomListCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+    def get_queryset(self):
+        return ChatRoom.objects.filter(
+            models.Q(patient=self.request.user) | models.Q(doctor=self.request.user)
+        )
 
-    def get(self, request):
-        user = request.user
-        if user.role == 'doctor':
-            rooms = ChatRoom.objects.filter(doctor=user)
-        elif user.role == 'patient':
-            rooms = ChatRoom.objects.filter(patient=user)
-        else:
-            return Response({"detail": "Unauthorized user type."}, status=status.HTTP_403_FORBIDDEN)
-        serializer = ChatRoomSerializer(rooms, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    @action(detail=True, methods=['post'])
+    def send_message(self, request, pk=None):
+        chat_room = self.get_object()
+        message = request.data.get('message')
+        
+        if not message:
+            return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    def post(self, request):
-        serializer = ChatRoomSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Save message to Django database
+        message_obj = Message.objects.create(
+            room=chat_room,
+            sender=request.user,
+            message=message
+        )
 
+        # Save message to Firebase
+        chat_ref = get_chat_ref()
+        chat_ref.child(str(chat_room.id)).push({
+            'message': message,
+            'sender_id': request.user.id,
+            'sender_name': request.user.username,
+            'timestamp': time.time()
+        })
 
-class MessageListCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+        return Response(MessageSerializer(message_obj).data)
 
-    def get(self, request, room_id):
-        messages = Message.objects.filter(room_id=room_id).order_by('timestamp')
-        serializer = MessageSerializer(messages, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    @action(detail=True, methods=['post'])
+    def update_online_status(self, request, pk=None):
+        status_ref = get_online_status_ref()
+        status_ref.child(str(request.user.id)).set({
+            'status': request.data.get('status', 'online'),
+            'last_seen': time.time()
+        })
+        return Response({'status': 'success'})
 
-    def post(self, request, room_id):
-        serializer = MessageSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(sender=request.user, room_id=room_id)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=True, methods=['get'])
+    def get_messages(self, request, pk=None):
+        chat_room = self.get_object()
+        messages = Message.objects.filter(room=chat_room).order_by('timestamp')
+        return Response(MessageSerializer(messages, many=True).data)

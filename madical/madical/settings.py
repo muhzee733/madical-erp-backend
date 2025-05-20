@@ -26,9 +26,10 @@ INSTALLED_APPS = [
     'users',
     'questions',
     'appointment',
+    'rest_framework',
+    'rest_framework_simplejwt',
     'order',
     'chat',
-    'channels',
 ]
 
 MIDDLEWARE = [
@@ -60,16 +61,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'madical.wsgi.application'
-ASGI_APPLICATION = 'madical.asgi.application'
-
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
-        },
-    },
-}
 
 DATABASES = {
     'default': {
@@ -111,7 +102,7 @@ AUTH_USER_MODEL = 'users.User'
 
 # CORS
 CORS_ALLOWED_ORIGINS = [
-    "https://promedicine.geeklies.xyz",
+     "http://localhost:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -124,11 +115,12 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=10)
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
 }
 
 

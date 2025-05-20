@@ -1,22 +1,15 @@
 import os
-import django 
-from dotenv import load_dotenv
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'madical.settings')
-django.setup() 
-load_dotenv()
-
+from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack
-import chat.routing
 
-from django.core.asgi import get_asgi_application
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'madical.settings')
+
+from chat.routing import websocket_urlpatterns
 
 application = ProtocolTypeRouter({
-    "http": get_asgi_application(),
-    "websocket": AuthMiddlewareStack(
-        URLRouter(
-            chat.routing.websocket_urlpatterns
-        )
+    'http': get_asgi_application(),
+    'websocket': AuthMiddlewareStack(
+        URLRouter(websocket_urlpatterns)
     ),
 })

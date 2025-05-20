@@ -3,6 +3,9 @@ from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import generics, permissions, filters
+from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Drug, Prescription
 from .serializers import DrugSerializer, PrescriptionSerializer
@@ -13,8 +16,6 @@ from users.permissions import IsDoctor
 # --------------------
 # DRF API Views
 # --------------------
-
-from rest_framework import generics, permissions
 
 class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all()
@@ -31,15 +32,36 @@ class PrescriptionCreateView(generics.CreateAPIView):
 class PrescriptionListView(generics.ListAPIView):
     serializer_class = PrescriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['patient__first_name', 'patient__last_name', 'patient__email']
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'doctor':
-            return Prescription.objects.filter(doctor=user)
-        elif user.role == 'patient':
-            return Prescription.objects.filter(patient=user)
-        return Prescription.objects.none()
+        queryset = Prescription.objects.all()
 
+        if user.role == 'doctor':
+            queryset = queryset.filter(doctor=user)
+        elif user.role == 'patient':
+            queryset = queryset.filter(patient=user)
+        else:
+            return Prescription.objects.none()
+
+        search = self.request.query_params.get('search')
+        if search:
+            name_parts = search.split()
+            if len(name_parts) >= 2:
+                queryset = queryset.filter(
+                    Q(patient__first_name__icontains=name_parts[0]) &
+                    Q(patient__last_name__icontains=name_parts[1])
+                )
+            else:
+                queryset = queryset.filter(
+                    Q(patient__first_name__icontains=search) |
+                    Q(patient__last_name__icontains=search) |
+                    Q(patient__email__icontains=search)
+                )
+
+        return queryset
 
 # --------------------
 # PDF Export View

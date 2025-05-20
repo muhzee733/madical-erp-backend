@@ -21,6 +21,8 @@ class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all()
     serializer_class = DrugSerializer
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['pbs_code', 'drug_name', 'brand_name', 'form', 'strength']
 
 
 class PrescriptionCreateView(generics.CreateAPIView):
@@ -62,13 +64,6 @@ class PrescriptionListView(generics.ListAPIView):
                 )
 
         return queryset
-
-class DrugSearchView(generics.ListAPIView):
-    queryset = Drug.objects.all()
-    serializer_class = DrugSerializer
-    permission_classes = [permissions.IsAuthenticated, IsDoctor]
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['pbs_code', 'drug_name', 'brand_name', 'form', 'strength']
 
 # --------------------
 # PDF Export View

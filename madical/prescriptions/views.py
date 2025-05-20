@@ -14,7 +14,7 @@ from users.permissions import IsDoctor
 # DRF API Views
 # --------------------
 
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, filters
 
 class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all()
@@ -40,6 +40,13 @@ class PrescriptionListView(generics.ListAPIView):
             return Prescription.objects.filter(patient=user)
         return Prescription.objects.none()
 
+
+class DrugSearchView(generics.ListAPIView):
+    queryset = Drug.objects.all()
+    serializer_class = DrugSerializer
+    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['pbs_code', 'drug_name', 'brand_name', 'form', 'strength']
 
 # --------------------
 # PDF Export View

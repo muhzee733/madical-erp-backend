@@ -21,8 +21,20 @@ class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all()
     serializer_class = DrugSerializer
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['pbs_code', 'drug_name', 'brand_name', 'form', 'strength']
+    filterset_fields = [
+        'form',                     
+        'strength',                
+        'schedule_code',           
+        'program_code',             
+        'manufacturer_code',       
+        'unit_of_measure',          
+        'electronic_chart_eligible',
+        'infusible_indicator',     
+        'is_active',               
+    ]
+
 
 
 class PrescriptionCreateView(generics.CreateAPIView):

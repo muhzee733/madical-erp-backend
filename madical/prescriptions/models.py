@@ -1,11 +1,13 @@
 from django.db import models
 from users.models import User
+from supplier_products.models import SupplierProduct
+
 
 class Drug(models.Model):
     name = models.CharField(max_length=100)
     molecule = models.CharField(max_length=100, blank=True)
-    form = models.CharField(max_length=50, blank=True)  # e.g., oil, capsule
-    strength = models.CharField(max_length=100, blank=True)  # e.g., 10mg/ml
+    form = models.CharField(max_length=50, blank=True)
+    strength = models.CharField(max_length=100, blank=True)
     is_schedule_8 = models.BooleanField(default=False)
     manufacturer = models.CharField(max_length=100, blank=True)
     notes = models.TextField(blank=True)
@@ -19,7 +21,7 @@ class Prescription(models.Model):
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='prescriptions_received')
     created_at = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(blank=True)
-    signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True)  # doctor sign
+    signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True)
     is_final = models.BooleanField(default=False)
 
     def __str__(self):
@@ -27,6 +29,9 @@ class Prescription(models.Model):
 
     def has_schedule_8(self):
         return any(item.drug.is_schedule_8 for item in self.prescribed_drugs.all())
+
+    def has_supplier_schedule_8(self):
+        return any(item.product.is_schedule_8 for item in self.prescribed_supplier_products.all())
 
 
 class PrescriptionDrug(models.Model):
@@ -39,3 +44,15 @@ class PrescriptionDrug(models.Model):
 
     def __str__(self):
         return f"{self.drug.name} for Rx#{self.prescription.id}"
+
+
+class PrescriptionSupplierProduct(models.Model):
+    prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='prescribed_supplier_products')
+    product = models.ForeignKey(SupplierProduct, on_delete=models.CASCADE)
+    dosage = models.CharField(max_length=100)
+    instructions = models.TextField()
+    quantity = models.PositiveIntegerField(default=1)
+    repeats = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f"{self.product.name} for Rx#{self.prescription.id}"

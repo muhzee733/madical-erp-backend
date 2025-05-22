@@ -4,8 +4,9 @@ from .models import Prescription, PrescriptionDrug, Drug
 
 @admin.register(Drug)
 class DrugAdmin(admin.ModelAdmin):
-    list_display = ['name', 'form', 'strength', 'is_schedule_8']
-    search_fields = ['name', 'form']
+    list_display = ('pbs_code', 'drug_name', 'brand_name', 'is_active')
+    search_fields = ('pbs_code', 'drug_name', 'brand_name')
+    list_filter = ('is_active', 'schedule_code')
 
 
 @admin.register(PrescriptionDrug)

@@ -1,19 +1,36 @@
 from django.db import models
+from django.utils import timezone
 from users.models import User
 from supplier_products.models import SupplierProduct
 
 
+
 class Drug(models.Model):
-    name = models.CharField(max_length=100)
-    molecule = models.CharField(max_length=100, blank=True)
-    form = models.CharField(max_length=50, blank=True)
-    strength = models.CharField(max_length=100, blank=True)
-    is_schedule_8 = models.BooleanField(default=False)
-    manufacturer = models.CharField(max_length=100, blank=True)
-    notes = models.TextField(blank=True)
+    pbs_code = models.CharField(max_length=10, unique=True, default="UNKNOWN")
+    drug_name = models.CharField(max_length=100, blank=True, null=True)
+    brand_name = models.CharField(max_length=100, blank=True, null=True)
+    form = models.CharField(max_length=50, blank=True, null=True)
+    strength = models.CharField(max_length=50, blank=True, null=True)
+    schedule_code = models.CharField(max_length=10, blank=True, null=True)
+    program_code = models.CharField(max_length=10, blank=True, null=True)
+    manufacturer_code = models.CharField(max_length=100, blank=True, null=True)
+    max_prescribable_pack = models.CharField(max_length=50, blank=True, null=True)
+    number_of_repeats = models.IntegerField(default=0)
+    container = models.CharField(max_length=100, blank=True, null=True)
+    unit_of_measure = models.CharField(max_length=50, blank=True, null=True)
+    dangerous_drug_fee_code = models.CharField(max_length=10, blank=True, null=True)
+    electronic_chart_eligible = models.BooleanField(default=False)
+    infusible_indicator = models.CharField(max_length=10, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    updated_by = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.name} ({self.strength})"
+        return f"{self.drug_name} ({self.pbs_code})"
 
 
 class Prescription(models.Model):

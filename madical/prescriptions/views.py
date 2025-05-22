@@ -10,7 +10,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Drug, Prescription
 from .serializers import DrugSerializer, PrescriptionSerializer
 from .utils.pdf_utils import generate_prescription_pdf
-from users.permissions import IsDoctor
+from users.permissions import IsDoctor, IsDoctorOrAdmin
 
 
 # --------------------
@@ -20,7 +20,21 @@ from users.permissions import IsDoctor
 class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all()
     serializer_class = DrugSerializer
-    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    permission_classes = [permissions.IsAuthenticated, IsDoctorOrAdmin]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['pbs_code', 'drug_name', 'brand_name', 'form', 'strength']
+    filterset_fields = [
+        'form',                     
+        'strength',                
+        'schedule_code',           
+        'program_code',             
+        'manufacturer_code',       
+        'unit_of_measure',          
+        'electronic_chart_eligible',
+        'infusible_indicator',     
+        'is_active',               
+    ]
+
 
 
 class PrescriptionCreateView(generics.CreateAPIView):

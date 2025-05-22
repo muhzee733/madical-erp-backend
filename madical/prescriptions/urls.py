@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     PrescriptionCreateView,
     PrescriptionListView,
-    download_prescription_pdf
+    download_prescription_pdf,
 )
 
 urlpatterns = [

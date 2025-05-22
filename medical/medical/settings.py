@@ -46,7 +46,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'madical.urls'
+ROOT_URLCONF = 'medical.urls'
 
 TEMPLATES = [
     {
@@ -63,8 +63,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'madical.wsgi.application'
-ASGI_APPLICATION = 'madical.asgi.application'
+WSGI_APPLICATION = 'medical.wsgi.application'
+ASGI_APPLICATION = 'medical.asgi.application'
 
 CHANNEL_LAYERS = {
     'default': {
@@ -78,7 +78,7 @@ CHANNEL_LAYERS = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'madical',
+        'NAME': 'medical',
         'USER':  'admin',
         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
         'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',

@@ -2,7 +2,7 @@ import os
 import django 
 from dotenv import load_dotenv
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'madical.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'medical.settings')
 django.setup() 
 load_dotenv()
 

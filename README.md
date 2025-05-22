@@ -14,7 +14,7 @@ This is a Django-based RESTful API backend for **ProMedicine**, an e-Prescribing
 
 ```bash
 git clone git@github.com:your-org/your-repo.git
-cd madical-erp-backend
+cd medical-erp-backend
 ```
 
 ### 2. Create and Activate a Virtual Environment
@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ```
 
 ### 4. Configure the Database
-Update madical/settings.py if you’re using a local or remote MySQL DB.
+Update medical/settings.py if you’re using a local or remote MySQL DB.
 ```bash
 DATABASES = {
     'default': {

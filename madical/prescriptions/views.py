@@ -47,22 +47,25 @@ class PrescriptionListView(generics.ListAPIView):
     serializer_class = PrescriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['doctor', 'patient', 'created_at']
     search_fields = ['patient__first_name', 'patient__last_name', 'patient__email']
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Prescription.objects.all()
 
-        if user.role == 'doctor':
-            queryset = queryset.filter(doctor=user)
+        if user.role == 'admin':
+            queryset = Prescription.objects.all()
+        elif user.role == 'doctor':
+            queryset = Prescription.objects.filter(doctor=user)
         elif user.role == 'patient':
-            queryset = queryset.filter(patient=user)
+            queryset = Prescription.objects.filter(patient=user)
         else:
             return Prescription.objects.none()
 
+        # Optional: custom search override for full name matching
         search = self.request.query_params.get('search')
         if search:
-            name_parts = search.split()
+            name_parts = search.strip().split()
             if len(name_parts) >= 2:
                 queryset = queryset.filter(
                     Q(patient__first_name__icontains=name_parts[0]) &
@@ -77,6 +80,7 @@ class PrescriptionListView(generics.ListAPIView):
 
         return queryset
 
+
 # --------------------
 # PDF Export View
 # --------------------
@@ -86,7 +90,7 @@ class PrescriptionListView(generics.ListAPIView):
 def download_prescription_pdf(request, prescription_id):
     prescription = get_object_or_404(Prescription, id=prescription_id)
 
-    # Only doctor who created it or admin can access
+    # Only the doctor who created it or an admin can access
     if request.user != prescription.doctor and not request.user.is_superuser:
         return Response({"detail": "Unauthorized access"}, status=401)
 

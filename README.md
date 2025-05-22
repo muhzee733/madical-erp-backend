@@ -46,10 +46,22 @@ DATABASES = {
 ```
 
 ### 5. Apply Migrations
+After making changes to any Django model, you need to create and apply database migrations.
 ```bash
 python manage.py makemigrations
 python manage.py migrate
 ```
+
+If specific apps were changed:
+Sometimes you may need to generate migrations for specific apps:
+```bash
+python manage.py makemigrations prescriptions
+python manage.py makemigrations supplier_products
+```
+Use this when:
+- You’ve made changes to models inside prescriptions or supplier_products
+- You’re getting errors like table does not exist
+- You want to avoid accidentally generating migrations for unrelated apps
 
 
 ### 6. Create a Superuser 

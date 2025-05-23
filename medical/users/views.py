@@ -1,5 +1,5 @@
 from rest_framework import status, serializers
-from .serializers import RegisterSerializer
+from .serializers import RegisterSerializer, AdminUserSerializer
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User
 from .permissions import IsPatient, IsDoctor, IsAdmin
 from rest_framework.permissions import IsAuthenticated
-
+from django.shortcuts import get_object_or_404
 
 class LoginView(APIView):
     class LoginSerializer(serializers.Serializer):
@@ -88,12 +88,11 @@ class PatientDashboardView(APIView):
                 "role": request.user.role
             }
         })
-    
+
 class DoctorDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsDoctor]
 
     def get(self, request):
-        print(request)
         return Response({
             "message": "Welcome",
             "user": {
@@ -101,12 +100,11 @@ class DoctorDashboardView(APIView):
                 "role": request.user.role
             }
         })
-      
+
 class AdminDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        print(request)
         return Response({
             "message": "Welcome to the Admin Dashboard",
             "user": {
@@ -114,3 +112,14 @@ class AdminDashboardView(APIView):
                 "role": request.user.role
             }
         })
+
+class AdminUserListView(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = User.objects.all()
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    lookup_field = 'id'

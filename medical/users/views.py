@@ -58,7 +58,7 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('id')
     serializer_class = RegisterSerializer
 
     def create(self, request):
@@ -114,12 +114,12 @@ class AdminDashboardView(APIView):
         })
 
 class AdminUserListView(generics.ListAPIView):
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('id')
     serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
 
 class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('id')
     serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
     lookup_field = 'id'

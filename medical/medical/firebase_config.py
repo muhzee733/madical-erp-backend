@@ -7,7 +7,7 @@ def initialize_firebase():
     # Path to your Firebase service account key file
     cred = credentials.Certificate(os.path.join(settings.BASE_DIR, 'firebase-credentials.json'))
     firebase_admin.initialize_app(cred, {
-        'databaseURL': 'YOUR_FIREBASE_DATABASE_URL'  # Replace with your Firebase database URL
+        'databaseURL': 'https://medical-chat-app-2025-default-rtdb.firebaseio.com/'
     })
 
 def get_chat_ref():

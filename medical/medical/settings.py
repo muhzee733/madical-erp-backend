@@ -22,12 +22,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',       
     'django_filters',
     'corsheaders',
     'users',
     'questions',
     'appointment',
-    'rest_framework',
     'rest_framework_simplejwt',
     'order',
     'chat',
@@ -47,7 +47,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'madical.urls'
+ROOT_URLCONF = 'medical.urls'
 
 TEMPLATES = [
     {
@@ -64,12 +64,14 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'madical.wsgi.application'
+WSGI_APPLICATION = 'medical.wsgi.application'
+ASGI_APPLICATION = 'medical.asgi.application'
+
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'madical',
+        'NAME': 'medical',
         'USER':  'admin',
         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
         'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
@@ -124,6 +126,8 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
     ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10
 }
 
 SIMPLE_JWT = {

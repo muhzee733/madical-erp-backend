@@ -14,6 +14,10 @@ class SupplierProduct(models.Model):
     access_mechanism = models.CharField(max_length=255, blank=True, null=True)
     poison_schedule = models.CharField(max_length=100, blank=True, null=True)
     storage_information = models.TextField(blank=True, null=True)
+    strain_type = models.CharField(max_length=100, blank=True, null=True)
+    cultivar = models.CharField(max_length=255, blank=True, null=True)
+    wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    retail_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     imported_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

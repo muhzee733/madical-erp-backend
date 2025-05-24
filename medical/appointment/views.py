@@ -90,35 +90,52 @@ class DeleteAvailabilityView(generics.DestroyAPIView):
 
 
 class MarkAppointmentCompleteView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, appointment_id):
-        appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=request.user)
+        user = request.user
+
+        if user.role == 'doctor':
+            appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=user)
+        elif user.role == 'admin':
+            appointment = get_object_or_404(Appointment, id=appointment_id)
+        else:
+            return Response({"error": "Unauthorized role."}, status=403)
+
         appointment.status = 'completed'
         appointment.save()
 
         AppointmentActionLog.objects.create(
             appointment=appointment,
             action_type="completed",
-            performed_by=request.user
+            performed_by=user
         )
-        return Response({"message": "Appointment marked as completed."})
+        return Response({"message": f"Appointment marked as completed by {user.role}."})
+
 
 
 class MarkAppointmentNoShowView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, appointment_id):
-        appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=request.user)
+        user = request.user
+
+        if user.role == 'doctor':
+            appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=user)
+        elif user.role == 'admin':
+            appointment = get_object_or_404(Appointment, id=appointment_id)
+        else:
+            return Response({"error": "Unauthorized role."}, status=403)
+
         appointment.status = 'no_show'
         appointment.save()
 
         AppointmentActionLog.objects.create(
             appointment=appointment,
             action_type="no_show",
-            performed_by=request.user
+            performed_by=user
         )
-        return Response({"message": "Appointment marked as no-show."})
+        return Response({"message": f"Appointment marked as no-show by {user.role}."})
 
 
 class ListMyAvailabilityView(generics.ListAPIView):
@@ -175,63 +192,97 @@ class BookAppointmentView(generics.CreateAPIView):
 
 
 class CancelAppointmentView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPatient]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, appointment_id):
-        appointment = get_object_or_404(Appointment, id=appointment_id, patient=request.user)
-        if (appointment.availability.start_time - now()).total_seconds() / 60 < 60:
-            return Response({"error": "Cannot cancel less than 1 hour before appointment."}, status=400)
+        user = request.user
 
-        appointment.status = 'cancelled_by_patient'
+        # Determine which role is cancelling
+        if user.role == 'patient':
+            appointment = get_object_or_404(Appointment, id=appointment_id, patient=user)
+            # Enforce 1-hour cancellation window for patients only
+            minutes_left = (appointment.availability.start_time - now()).total_seconds() / 60
+            if minutes_left < 60:
+                return Response({"error": "Cannot cancel less than 1 hour before appointment."}, status=400)
+            cancel_status = 'cancelled_by_patient'
+
+        elif user.role == 'doctor':
+            appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=user)
+            cancel_status = 'cancelled_by_doctor'
+
+        elif user.role == 'admin':
+            appointment = get_object_or_404(Appointment, id=appointment_id)
+            cancel_status = 'cancelled_by_admin'
+
+        else:
+            return Response({"error": "Unauthorized role."}, status=403)
+
+        # Cancel the appointment
+        appointment.status = cancel_status
         appointment.save()
 
+        # Free the availability slot
         availability = appointment.availability
         availability.is_booked = False
         availability.save()
 
+        # Log the cancellation
         AppointmentActionLog.objects.create(
             appointment=appointment,
             action_type="cancelled",
-            performed_by=request.user
+            performed_by=user
         )
 
-        return Response({"message": "Appointment cancelled."}, status=200)
+        return Response({"message": f"Appointment cancelled by {user.role}."}, status=200)
 
 
 class RescheduleAppointmentView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPatient]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, appointment_id):
-        old_appointment = get_object_or_404(Appointment, id=appointment_id, patient=request.user)
+        user = request.user
         new_availability_id = request.data.get('new_availability_id')
 
         if not new_availability_id:
             return Response({"error": "New availability ID is required."}, status=400)
 
+        # Identify and authorize the old appointment
+        if user.role == 'patient':
+            old_appointment = get_object_or_404(Appointment, id=appointment_id, patient=user)
+        elif user.role == 'doctor':
+            old_appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=user)
+        elif user.role == 'admin':
+            old_appointment = get_object_or_404(Appointment, id=appointment_id)
+        else:
+            return Response({"error": "Unauthorized role."}, status=403)
+
+        # Fetch the new availability
         new_availability = get_object_or_404(AppointmentAvailability, id=new_availability_id, is_booked=False)
 
+        # Mark old as rescheduled
         old_appointment.status = 'rescheduled'
         old_appointment.save()
         old_appointment.availability.is_booked = False
         old_appointment.availability.save()
 
+        # Create the new appointment
         new_appointment = Appointment.objects.create(
             availability=new_availability,
-            patient=request.user,
+            patient=old_appointment.patient,  # preserve the original patient
             status='booked',
             rescheduled_from=old_appointment
         )
         new_availability.is_booked = True
         new_availability.save()
 
+        # Log the action
         AppointmentActionLog.objects.create(
             appointment=new_appointment,
             action_type="rescheduled",
-            performed_by=request.user
+            performed_by=user
         )
 
-        return Response({"message": "Appointment rescheduled."}, status=200)
-
+        return Response({"message": f"Appointment rescheduled by {user.role}."}, status=200)
 
 class ListMyAppointmentsView(generics.ListAPIView):
     serializer_class = AppointmentSerializer

@@ -30,6 +30,7 @@ class Appointment(models.Model):
         ("booked", "Booked"),
         ("cancelled_by_patient", "Cancelled by Patient"),
         ("cancelled_by_doctor", "Cancelled by Doctor"),
+        ("cancelled_by_admin", "Cancelled by Admin"),
         ("rescheduled", "Rescheduled"),
         ("completed", "Completed"),
         ("no_show", "No Show"),

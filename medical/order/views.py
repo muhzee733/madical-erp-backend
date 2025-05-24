@@ -129,7 +129,7 @@ class CreateStripeCheckoutSession(APIView):
                     'quantity': 1,
                 }],
                 mode='payment',
-                success_url = 'http://madical-erp-s3.s3-website.eu-north-1.amazonaws.com/appointment-success?session_id={CHECKOUT_SESSION_ID}',
+                success_url = 'http://medical-erp-s3.s3-website.eu-north-1.amazonaws.com/appointment-success?session_id={CHECKOUT_SESSION_ID}',
                 
                 cancel_url='http://localhost:3000/cancel',  # Apne frontend ka cancel page
                 metadata={

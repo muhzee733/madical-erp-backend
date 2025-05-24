@@ -71,7 +71,7 @@ ASGI_APPLICATION = 'medical.asgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'medical',
+        'NAME': 'madical',
         'USER':  'admin',
         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
         'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',

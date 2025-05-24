@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import ChatRoom, Message
 from .serializers import ChatRoomSerializer, MessageSerializer
-from madical.firebase_config import get_chat_ref, get_online_status_ref
+from medical.firebase_config import get_chat_ref, get_online_status_ref
 import time
 from django.db import models
 

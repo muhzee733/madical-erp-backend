@@ -1,15 +1,22 @@
-from rest_framework import status, serializers
-from .serializers import RegisterSerializer, AdminUserSerializer
-from rest_framework import generics
+from django.contrib.auth import authenticate
+from django.shortcuts import get_object_or_404
+from rest_framework import status, generics, serializers
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth import authenticate
+from rest_framework.exceptions import NotFound
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import User
-from .permissions import IsPatient, IsDoctor, IsAdmin
-from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
 
+from .models import User, DoctorProfile, PatientProfile
+from .serializers import (
+    AdminUserSerializer,
+    RegisterSerializer,
+    DoctorProfileSerializer,
+    PatientProfileSerializer,
+)
+from .permissions import IsPatient, IsDoctor, IsAdmin
+
+# ──────────────── Login & Register ────────────────
 class LoginView(APIView):
     class LoginSerializer(serializers.Serializer):
         email = serializers.CharField(max_length=100)
@@ -61,6 +68,13 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all().order_by('id')
     serializer_class = RegisterSerializer
 
+    def perform_create(self, serializer):
+        user = serializer.save()
+        # set audit fields to self (user-created by self)
+        user.created_by = user
+        user.updated_by = user
+        user.save()    
+
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
@@ -76,6 +90,75 @@ class RegisterView(generics.CreateAPIView):
             "message": "User registered successfully!",
             "user": user_data
         }, status=status.HTTP_201_CREATED)
+    
+    
+# ──────────────── Doctor profile endpoints ────────────────
+
+class DoctorProfileCreateView(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated, IsDoctor]
+    serializer_class   = DoctorProfileSerializer
+
+    def perform_create(self, serializer):
+        if hasattr(self.request.user, "doctorprofile"):
+            raise serializers.ValidationError(
+                "Doctor profile already exists. "
+                "Use PATCH /profile/doctor/ to update it."
+            )
+                
+        serializer.save(
+            user=self.request.user,
+            created_by=self.request.user,
+            updated_by=self.request.user,
+        )
+
+
+class DoctorProfileDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated, IsDoctor]
+    serializer_class   = DoctorProfileSerializer
+
+    def get_object(self):
+        try:
+            return self.request.user.doctorprofile
+        except DoctorProfile.DoesNotExist:
+            raise NotFound("Doctor profile not found. Create it with POST first.")
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+# ──────────────── Patient profile endpoints ────────────────
+
+class PatientProfileCreateView(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+    serializer_class   = PatientProfileSerializer
+
+    def perform_create(self, serializer):
+        if hasattr(self.request.user, "patientprofile"):
+            raise serializers.ValidationError(
+                "Patient profile already exists. "
+                "Use PATCH /profile/patient/ to update it."
+            )
+        
+        serializer.save(
+            user=self.request.user,
+            created_by=self.request.user,
+            updated_by=self.request.user,
+        )
+
+
+class PatientProfileDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+    serializer_class   = PatientProfileSerializer
+
+    def get_object(self):
+        try:
+            return self.request.user.patientprofile
+        except PatientProfile.DoesNotExist:
+            raise NotFound("Patient profile not found. Create it with POST first.")
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+# ──────────────── Dashboards ────────────────
 
 class PatientDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsPatient]

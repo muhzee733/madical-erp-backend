@@ -83,7 +83,30 @@ python manage.py import_medreleaf path/to/file.xlsx
 
 
 
-### User Endpoints
+## User Endpoints
+
+### Dashboard Endpoints
+
+| **Role**   | **Endpoint**                             | **Description**                            |
+|------------|------------------------------------------|--------------------------------------------|
+| Admin      | `/api/v1/users/dashboard/admin/`         | Access control panel and user management, View, update, and delete all user accounts  |
+| Doctor     | `/api/v1/users/dashboard/doctor/`        | Access dashboard for doctors, Create and manage prescriptions                   |
+| Patient    | `/api/v1/users/dashboard/patient/`       | Access dashboard for patients, View their prescriptions and profile                  |
+
+---
+
+### Admin-Level User Management API
+
+> These endpoints require an authenticated user with the **admin** role.
+
+| **Action**         | **Endpoint**                                | **Method**         |
+|--------------------|---------------------------------------------|--------------------|
+| List all users     | `/api/v1/users/admin/users/`                | `GET`              |
+| Retrieve a user    | `/api/v1/users/admin/users/<id>/`           | `GET`              |
+| Update a user      | `/api/v1/users/admin/users/<id>/`           | `PUT` / `PATCH`    |
+| Delete a user      | `/api/v1/users/admin/users/<id>/`           | `DELETE`           |
+
+
 
 | Endpoint                    | Method | Description                  | Auth Required | Sample Body                                                                                         |
 |----------------------------|--------|------------------------------|----------------|------------------------------------------------------------------------------------------------------|

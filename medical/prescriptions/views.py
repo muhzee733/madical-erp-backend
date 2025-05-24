@@ -18,7 +18,7 @@ from users.permissions import IsDoctor, IsDoctorOrAdmin
 # --------------------
 
 class DrugListCreateView(generics.ListCreateAPIView):
-    queryset = Drug.objects.all()
+    queryset = Drug.objects.all().order_by('id')
     serializer_class = DrugSerializer
     permission_classes = [permissions.IsAuthenticated, IsDoctorOrAdmin]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -38,7 +38,7 @@ class DrugListCreateView(generics.ListCreateAPIView):
 
 
 class PrescriptionCreateView(generics.CreateAPIView):
-    queryset = Prescription.objects.all()
+    queryset = Prescription.objects.all().order_by('id')
     serializer_class = PrescriptionSerializer
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
@@ -54,7 +54,7 @@ class PrescriptionListView(generics.ListAPIView):
         user = self.request.user
 
         if user.role == 'admin':
-            queryset = Prescription.objects.all()
+            queryset = Prescription.objects.all().order_by('id')
         elif user.role == 'doctor':
             queryset = Prescription.objects.filter(doctor=user)
         elif user.role == 'patient':

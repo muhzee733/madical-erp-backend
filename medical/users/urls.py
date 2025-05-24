@@ -10,6 +10,8 @@ from .views import (
     # profile endpoints
     AdminUserListView,
     AdminUserDetailView,
+    AdminDoctorProfileView,
+    AdminPatientProfileView,
     DoctorProfileCreateView,
     DoctorProfileDetailView,
     PatientProfileCreateView,
@@ -25,6 +27,12 @@ urlpatterns = [
 
     path('admin/users/', AdminUserListView.as_view(), name='admin-user-list'),
     path('admin/users/<int:id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
+    
+    # Admin doctor & patient profile management
+    path("admin/doctor-profile/<int:doctor_id>/", AdminDoctorProfileView.as_view(),
+        name="admin-doctor-profile"),
+    path("admin/patient-profile/<int:patient_id>/", AdminPatientProfileView.as_view(),
+        name="admin-patient-profile"),
 
     # ───── doctor profile (create once, then view/update) ─────────
     path("profile/doctor/create/", DoctorProfileCreateView.as_view(),

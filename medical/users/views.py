@@ -4,7 +4,7 @@ from rest_framework import status, generics, serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User, DoctorProfile, PatientProfile
@@ -98,13 +98,19 @@ class DoctorProfileCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsDoctor]
     serializer_class   = DoctorProfileSerializer
 
+class DoctorProfileCreateView(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated, IsDoctor]
+    serializer_class = DoctorProfileSerializer
+
     def perform_create(self, serializer):
+        if self.request.user.role != "doctor":
+            raise PermissionDenied("Only doctors can access this endpoint.")
+
         if hasattr(self.request.user, "doctorprofile"):
             raise serializers.ValidationError(
-                "Doctor profile already exists. "
-                "Use PATCH /profile/doctor/ to update it."
+                "Doctor profile already exists. Use PATCH /profile/doctor/ to update it."
             )
-                
+
         serializer.save(
             user=self.request.user,
             created_by=self.request.user,
@@ -114,9 +120,12 @@ class DoctorProfileCreateView(generics.CreateAPIView):
 
 class DoctorProfileDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated, IsDoctor]
-    serializer_class   = DoctorProfileSerializer
+    serializer_class = DoctorProfileSerializer
 
     def get_object(self):
+        if self.request.user.role != "doctor":
+            raise PermissionDenied("Only doctors can access this endpoint.")
+
         try:
             return self.request.user.doctorprofile
         except DoctorProfile.DoesNotExist:
@@ -129,27 +138,31 @@ class DoctorProfileDetailView(generics.RetrieveUpdateAPIView):
 
 class PatientProfileCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
-    serializer_class   = PatientProfileSerializer
+    serializer_class = PatientProfileSerializer
 
     def perform_create(self, serializer):
+        if self.request.user.role != "patient":
+            raise ValidationError("Only patients can access this endpoint.")
+
         if hasattr(self.request.user, "patientprofile"):
-            raise serializers.ValidationError(
-                "Patient profile already exists. "
-                "Use PATCH /profile/patient/ to update it."
+            raise ValidationError(
+                "Patient profile already exists. Use PATCH /profile/patient/ to update it."
             )
-        
+
         serializer.save(
             user=self.request.user,
             created_by=self.request.user,
             updated_by=self.request.user,
         )
 
-
 class PatientProfileDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     serializer_class   = PatientProfileSerializer
 
     def get_object(self):
+        if self.request.user.role != "patient":
+            raise PermissionDenied("Only patients can access this endpoint.")
+
         try:
             return self.request.user.patientprofile
         except PatientProfile.DoesNotExist:
@@ -157,6 +170,58 @@ class PatientProfileDetailView(generics.RetrieveUpdateAPIView):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+# ──────────────── Admin endpoints ────────────────
+
+class AdminDoctorProfileView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+    serializer_class = DoctorProfileSerializer
+
+    def get_object(self):
+        doctor_id = self.kwargs.get("doctor_id")
+
+        # Ensure the user exists and is a doctor
+        user = get_object_or_404(User, id=doctor_id, role="doctor")
+
+        # Ensure DoctorProfile exists
+        try:
+            return DoctorProfile.objects.get(user=user)
+        except DoctorProfile.DoesNotExist:
+            raise NotFound("Doctor profile not found for this user.")
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+class AdminPatientProfileView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+    serializer_class = PatientProfileSerializer
+
+    def get_object(self):
+        patient_id = self.kwargs.get("patient_id")
+
+        # Ensure the user exists and is a patient
+        user = get_object_or_404(User, id=patient_id, role="patient")
+
+        # Ensure PatientProfile exists
+        try:
+            return PatientProfile.objects.get(user=user)
+        except PatientProfile.DoesNotExist:
+            raise NotFound("Patient profile not found for this user.")
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+class AdminUserListView(generics.ListAPIView):
+    queryset = User.objects.all().order_by('id')
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = User.objects.all().order_by('id')
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    lookup_field = 'id'
+
 
 # ──────────────── Dashboards ────────────────
 
@@ -196,13 +261,3 @@ class AdminDashboardView(APIView):
             }
         })
 
-class AdminUserListView(generics.ListAPIView):
-    queryset = User.objects.all().order_by('id')
-    serializer_class = AdminUserSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
-
-class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = User.objects.all().order_by('id')
-    serializer_class = AdminUserSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
-    lookup_field = 'id'

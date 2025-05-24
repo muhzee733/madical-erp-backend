@@ -6,6 +6,7 @@ from rest_framework import status
 from datetime import datetime, timedelta
 from .models import AppointmentAvailability
 from users.permissions import IsDoctor,IsPatient
+from order.models import Order
 
 User = get_user_model()
 
@@ -139,5 +140,86 @@ def get_all_appointments(request):
         "success": "true",
         "doctors": doctors_data
     }, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_appointment_details(request, appointment_id):
+    try:
+        print(f"Looking for ID: {appointment_id}")
+        
+        # First try to get the appointment directly
+        try:
+            appointment = AppointmentAvailability.objects.select_related('doctor').get(id=appointment_id)
+            print("Found appointment directly")
+        except AppointmentAvailability.DoesNotExist:
+            print("Not found as appointment, checking if it's an order ID...")
+            # If not found as appointment, try to get it through orders
+            try:
+                # Try to find order with this ID
+                order = Order.objects.select_related('appointment', 'appointment__doctor').get(id=appointment_id)
+                appointment = order.appointment
+                print(f"Found appointment through order ID: {order.id}")
+            except Order.DoesNotExist:
+                print("Not found as order ID, checking orders with this appointment ID...")
+                # If not found as order ID, try to find orders with this appointment ID
+                orders = Order.objects.filter(appointment_id=appointment_id)
+                if orders.exists():
+                    order = orders.first()
+                    appointment = order.appointment
+                    print(f"Found appointment through appointment ID in orders")
+                else:
+                    return Response({
+                        "error": "No appointment or order found with this ID"
+                    }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if the user is either the doctor or a patient
+        if request.user != appointment.doctor and not hasattr(request.user, 'is_patient'):
+            return Response({
+                "error": "You don't have permission to view this appointment"
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get order information if it exists
+        order = None
+        try:
+            order = Order.objects.get(appointment=appointment)
+            print(f"Found associated order: {order.id}")
+        except Order.DoesNotExist:
+            print("No associated order found")
+            pass
+        
+        appointment_data = {
+            "id": appointment.id,
+            "date": appointment.date,
+            "start_time": appointment.start_time.strftime("%H:%M:%S"),
+            "end_time": appointment.end_time.strftime("%H:%M:%S"),
+            "is_booked": appointment.is_booked,
+            "price": str(appointment.price),
+            "created_at": appointment.created_at,
+            "doctor": {
+                "id": appointment.doctor.id,
+                "email": appointment.doctor.email,
+                "first_name": appointment.doctor.first_name,
+                "last_name": appointment.doctor.last_name
+            },
+            "order": {
+                "id": str(order.id) if order else None,
+                "status": order.status if order else None,
+                "amount": str(order.amount) if order else None,
+                "created_at": order.created_at if order else None,
+                "payment_intent": order.payment_intent if order else None,
+                "stripe_session_id": order.stripe_session_id if order else None
+            } if order else None
+        }
+        
+        return Response({
+            "success": True,
+            "appointment": appointment_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"Error in get_appointment_details: {str(e)}")
+        return Response({
+            "error": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

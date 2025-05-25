@@ -1,8 +1,27 @@
 from django.urls import path
-from .views import post_schedule, get_doctor_appointments, get_all_appointments
+from . import views
 
 urlpatterns = [
-    path('availabilities/', post_schedule, name='post-schedule'),
-    path('availabilities/list/', get_doctor_appointments, name='get_doctor_appointments'),
-    path('appointments/all/', get_all_appointments, name='get_all_appointments'),
+    # ──────────────── Doctor Availability ────────────────
+    path('availabilities/', views.CreateAvailabilityView.as_view(), name='create-availability'),
+    path('availabilities/bulk/', views.BulkAvailabilityView.as_view(), name='bulk-availability'),
+    path('availabilities/list/', views.ListMyAvailabilityView.as_view(), name='list-my-availabilities'),
+    path('availabilities/<uuid:pk>/', views.EditAvailabilityView.as_view(), name='edit-availability'),
+    path('availabilities/<uuid:pk>/delete/', views.DeleteAvailabilityView.as_view(), name='delete-availability'),
+
+    # ──────────────── Patient: Available Slots & Booking ────────────────
+    path('appointments/all/', views.ListAvailableAppointmentsView.as_view(), name='list-available-appointments'),
+    path('appointments/', views.BookAppointmentView.as_view(), name='book-appointment'),
+
+    # ──────────────── Appointment Management ────────────────
+    path('appointments/<uuid:appointment_id>/cancel/', views.CancelAppointmentView.as_view(), name='cancel-appointment'),
+    path('appointments/<uuid:appointment_id>/reschedule/', views.RescheduleAppointmentView.as_view(), name='reschedule-appointment'),
+    path('appointments/my/', views.ListMyAppointmentsView.as_view(), name='list-my-appointments'),
+
+    # ──────────────── Doctor: Update Appointment Status ────────────────
+    path('appointments/<uuid:appointment_id>/complete/', views.MarkAppointmentCompleteView.as_view(), name='complete-appointment'),
+    path('appointments/<uuid:appointment_id>/no-show/', views.MarkAppointmentNoShowView.as_view(), name='no-show-appointment'),
+
+    # ──────────────── Logs / Audit ────────────────
+    path('appointments/<uuid:appointment_id>/logs/', views.AppointmentLogView.as_view(), name='appointment-logs'),
 ]

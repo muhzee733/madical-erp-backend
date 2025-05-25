@@ -20,15 +20,16 @@ class AppointmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = '__all__'
-        read_only_fields = ['id', 'booked_at', 'status', 'rescheduled_from']
+        read_only_fields = ['id', 'booked_at', 'status', 'rescheduled_from', 'patient']  
 
     def validate(self, data):
         availability = data.get('availability')
         if availability.is_booked:
             raise serializers.ValidationError("This slot is already booked.")
 
-        # Prevent patient from double-booking
-        patient = data.get('patient')
+        request = self.context.get('request')
+        patient = request.user if request else None
+
         new_start = availability.start_time
         new_end = availability.end_time
 
@@ -42,6 +43,10 @@ class AppointmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("You already have an appointment during this time.")
 
         return data
+
+    def create(self, validated_data):
+        validated_data['patient'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class AppointmentActionLogSerializer(serializers.ModelSerializer):

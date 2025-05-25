@@ -300,4 +300,5 @@ class AppointmentLogView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        get_object_or_404(Appointment, id=self.kwargs['appointment_id'])
         return AppointmentActionLog.objects.filter(appointment_id=self.kwargs['appointment_id'])

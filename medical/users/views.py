@@ -192,6 +192,13 @@ class AdminDoctorProfileView(generics.RetrieveUpdateAPIView):
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
 
+class AdminDoctorProfileListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+    serializer_class = DoctorProfileSerializer
+
+    def get_queryset(self):
+        return DoctorProfile.objects.select_related("user").order_by("id")
+
 class AdminPatientProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
     serializer_class = PatientProfileSerializer
@@ -210,6 +217,13 @@ class AdminPatientProfileView(generics.RetrieveUpdateAPIView):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+class AdminPatientProfileListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+    serializer_class = PatientProfileSerializer
+
+    def get_queryset(self):
+        return PatientProfile.objects.select_related("user").order_by("id")
 
 class AdminUserListView(generics.ListAPIView):
     queryset = User.objects.all().order_by('id')
@@ -242,7 +256,7 @@ class DoctorDashboardView(APIView):
 
     def get(self, request):
         return Response({
-            "message": "Welcome",
+            "message": "Welcome to the Doctor Dashboard",
             "user": {
                 "email": request.user.email,
                 "role": request.user.role

@@ -11,7 +11,9 @@ from .views import (
     AdminUserListView,
     AdminUserDetailView,
     AdminDoctorProfileView,
+    AdminDoctorProfileListView,
     AdminPatientProfileView,
+    AdminPatientProfileListView,
     DoctorProfileCreateView,
     DoctorProfileDetailView,
     PatientProfileCreateView,
@@ -33,6 +35,11 @@ urlpatterns = [
         name="admin-doctor-profile"),
     path("admin/patient-profile/<int:patient_id>/", AdminPatientProfileView.as_view(),
         name="admin-patient-profile"),
+    path("admin/doctor-profiles/", AdminDoctorProfileListView.as_view(), 
+	name="admin-doctor-profile-list"),
+    path("admin/patient-profiles/", AdminPatientProfileListView.as_view(), 
+	name="admin-patient-profile-list"),
+
 
     # ───── doctor profile (create once, then view/update) ─────────
     path("profile/doctor/create/", DoctorProfileCreateView.as_view(),

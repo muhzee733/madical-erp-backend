@@ -50,6 +50,15 @@ class UserViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("access", response.data)
 
+    def test_login_success_and_failure(self):
+        success = self.client.post(self.login_url, {"email": "doctor@example.com", "password": "doctor123"})
+        self.assertEqual(success.status_code, status.HTTP_200_OK)
+        self.assertIn("access", success.data)
+
+        fail = self.client.post(self.login_url, {"email": "doctor@example.com", "password": "wrong"})
+        self.assertEqual(fail.status_code, status.HTTP_200_OK)
+        self.assertEqual(fail.data["message"], "Incorrect password")
+
     def test_login_invalid_password(self):
         response = self.client.post(self.login_url, {
             "email": "doctor@example.com",
@@ -58,21 +67,26 @@ class UserViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Incorrect password")
 
-    def test_patient_dashboard_access(self):
-        self.client.force_authenticate(user=self.patient_user)
-        response = self.client.get(reverse("patient-dashboard"))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("Welcome to the Patient Dashboard", response.data["message"])
+    def test_dashboard_access(self):
+        # Patient
+        self.authenticate(self.patient_user)
+        res = self.client.get(reverse("patient-dashboard"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
 
-    def test_doctor_dashboard_access(self):
-        self.client.force_authenticate(user=self.doctor_user)
-        response = self.client.get(reverse("doctor-dashboard"))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Doctor
+        self.authenticate(self.doctor_user)
+        res = self.client.get(reverse("doctor-dashboard"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
 
-    def test_admin_dashboard_access(self):
-        self.client.force_authenticate(user=self.admin_user)
-        response = self.client.get(reverse("admin-dashboard"))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Admin
+        self.authenticate(self.admin_user)
+        res = self.client.get(reverse("admin-dashboard"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Unauthenticated
+        self.client.credentials()
+        res = self.client.get(reverse("admin-dashboard"))
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_doctor_profile_crud(self):
         self.authenticate(self.doctor_user)
@@ -128,3 +142,35 @@ class UserViewTests(APITestCase):
         res = self.client.patch(reverse("patient-profile"), updated_data, format='json')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data["medicare_number"], updated_data["medicare_number"])
+
+    def test_doctor_profile_forbidden_for_patient(self):
+        self.authenticate(self.patient_user)
+        res = self.client.get(reverse("doctor-profile"))
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patient_profile_forbidden_for_doctor(self):
+        self.authenticate(self.doctor_user)
+        res = self.client.get(reverse("patient-profile"))
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_user_list_and_detail(self):
+        self.authenticate(self.admin_user)
+        res = self.client.get(reverse("admin-user-list"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(res.data), 3)
+
+        user_detail_url = reverse("admin-user-detail", args=[self.doctor_user.id])
+        res = self.client.get(user_detail_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        res = self.client.patch(user_detail_url, {"first_name": "Updated"}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_non_admin_cannot_access_admin_views(self):
+        self.authenticate(self.patient_user)
+        res = self.client.get(reverse("admin-user-list"))
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.authenticate(self.doctor_user)
+        res = self.client.get(reverse("admin-user-list"))
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)

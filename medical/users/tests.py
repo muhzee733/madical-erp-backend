@@ -37,7 +37,10 @@ class UserViewTests(APITestCase):
         }
         response = self.client.post(self.register_url, data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["user"]["email"], data["email"])
+
+        # Duplicate registration
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_login_success(self):
         response = self.client.post(self.login_url, {

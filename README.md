@@ -79,7 +79,16 @@ python manage.py import_botanitech path/to/file.xlsx
 python manage.py import_medreleaf path/to/file.xlsx
 ```
 
+### 9. Running Unit Tests
+```bash
+# To run all tests
+python manage.py test
 
+# To run tests for a specific app
+python manage.py test users
+python manage.py test prescriptions
+python manage.py test appointment
+```
 
 
 

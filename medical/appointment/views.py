@@ -68,7 +68,7 @@ class BulkAvailabilityView(APIView):
     
 
 class EditAvailabilityView(generics.UpdateAPIView):
-    queryset = AppointmentAvailability.objects.all()
+    queryset = AppointmentAvailability.objects.all().order_by("id")
     serializer_class = AppointmentAvailabilitySerializer
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
@@ -80,7 +80,7 @@ class EditAvailabilityView(generics.UpdateAPIView):
 
 
 class DeleteAvailabilityView(generics.DestroyAPIView):
-    queryset = AppointmentAvailability.objects.all()
+    queryset = AppointmentAvailability.objects.all().order_by("id")
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def perform_destroy(self, instance):
@@ -143,7 +143,7 @@ class ListMyAvailabilityView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def get_queryset(self):
-        return AppointmentAvailability.objects.filter(doctor=self.request.user)
+        return AppointmentAvailability.objects.filter(doctor=self.request.user).order_by("id")
 
 
 class ListAvailableAppointmentsView(generics.ListAPIView):
@@ -151,7 +151,7 @@ class ListAvailableAppointmentsView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
     def get_queryset(self):
-        queryset = AppointmentAvailability.objects.filter(is_booked=False, start_time__gte=now())
+        queryset = AppointmentAvailability.objects.filter(is_booked=False, start_time__gte=now()).order_by("id")
 
         doctor_name = self.request.query_params.get("doctor_name")
         specialty = self.request.query_params.get("specialty")
@@ -291,8 +291,8 @@ class ListMyAppointmentsView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.role == 'doctor':
-            return Appointment.objects.filter(availability__doctor=user)
-        return Appointment.objects.filter(patient=user)
+            return Appointment.objects.filter(availability__doctor=user).order_by("id")
+        return Appointment.objects.filter(patient=user).order_by("id")
 
 
 class AppointmentLogView(generics.ListAPIView):
@@ -301,4 +301,4 @@ class AppointmentLogView(generics.ListAPIView):
 
     def get_queryset(self):
         get_object_or_404(Appointment, id=self.kwargs['appointment_id'])
-        return AppointmentActionLog.objects.filter(appointment_id=self.kwargs['appointment_id'])
+        return AppointmentActionLog.objects.filter(appointment_id=self.kwargs['appointment_id']).order_by("id")

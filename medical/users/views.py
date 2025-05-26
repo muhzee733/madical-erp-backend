@@ -81,7 +81,7 @@ class RegisterView(generics.CreateAPIView):
             return Response({
                 "success": False,
                 "errors": serializer.errors
-            }, status=status.HTTP_200_OK)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         self.perform_create(serializer)
         user_data = serializer.data
@@ -90,7 +90,6 @@ class RegisterView(generics.CreateAPIView):
             "message": "User registered successfully!",
             "user": user_data
         }, status=status.HTTP_201_CREATED)
-    
     
 # ──────────────── Doctor profile endpoints ────────────────
 

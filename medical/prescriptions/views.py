@@ -48,7 +48,14 @@ class PrescriptionListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['doctor', 'patient', 'created_at']
-    search_fields = ['patient__first_name', 'patient__last_name', 'patient__email']
+    search_fields = [
+        'doctor__first_name',
+        'doctor__last_name',
+        'doctor__email',
+        'patient__first_name',
+        'patient__last_name',
+        'patient__email'
+    ]
 
     def get_queryset(self):
         user = self.request.user
@@ -62,24 +69,25 @@ class PrescriptionListView(generics.ListAPIView):
         else:
             return Prescription.objects.none()
 
-        # Optional: custom search override for full name matching
         search = self.request.query_params.get('search')
         if search:
             name_parts = search.strip().split()
             if len(name_parts) >= 2:
                 queryset = queryset.filter(
-                    Q(patient__first_name__icontains=name_parts[0]) &
-                    Q(patient__last_name__icontains=name_parts[1])
+                    (Q(patient__first_name__icontains=name_parts[0]) & Q(patient__last_name__icontains=name_parts[1])) |
+                    (Q(doctor__first_name__icontains=name_parts[0]) & Q(doctor__last_name__icontains=name_parts[1]))
                 )
             else:
                 queryset = queryset.filter(
                     Q(patient__first_name__icontains=search) |
                     Q(patient__last_name__icontains=search) |
-                    Q(patient__email__icontains=search)
+                    Q(patient__email__icontains=search) |
+                    Q(doctor__first_name__icontains=search) |
+                    Q(doctor__last_name__icontains=search) |
+                    Q(doctor__email__icontains=search)
                 )
 
         return queryset
-
 
 # --------------------
 # PDF Export View

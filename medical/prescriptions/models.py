@@ -50,6 +50,8 @@ class Prescription(models.Model):
     def has_supplier_schedule_8(self):
         return any(item.product.is_schedule_8 for item in self.prescribed_supplier_products.all())
 
+    class Meta:
+        ordering = ['-created_at']
 
 class PrescriptionDrug(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='prescribed_drugs')
@@ -61,6 +63,9 @@ class PrescriptionDrug(models.Model):
 
     def __str__(self):
         return f"{self.drug.name} for Rx#{self.prescription.id}"
+    
+    class Meta:
+        ordering = ['id']
 
 
 class PrescriptionSupplierProduct(models.Model):
@@ -73,3 +78,6 @@ class PrescriptionSupplierProduct(models.Model):
 
     def __str__(self):
         return f"{self.product.name} for Rx#{self.prescription.id}"
+
+    class Meta:
+        ordering = ['id']

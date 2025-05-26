@@ -31,17 +31,23 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     prescribed_drugs = PrescriptionDrugWriteSerializer(many=True)
     prescribed_supplier_products = PrescriptionSupplierProductWriteSerializer(many=True)
     download_url = serializers.SerializerMethodField()
+    doctor_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Prescription
         fields = [
             'id', 'patient', 'notes', 'created_at', 'signature_image',
-            'is_final', 'prescribed_drugs', 'prescribed_supplier_products', 'download_url'
+            'is_final', 'prescribed_drugs', 'prescribed_supplier_products',
+            'download_url', 'doctor_name'
         ]
         read_only_fields = ['created_at']
 
     def get_download_url(self, obj):
         return f"/api/v1/prescriptions/pdf/{obj.id}/"
+    
+    def get_doctor_name(self, obj):
+        return f"{obj.doctor.first_name} {obj.doctor.last_name}".strip()
+
 
     def create(self, validated_data):
         prescribed_drugs_data = validated_data.pop('prescribed_drugs', [])

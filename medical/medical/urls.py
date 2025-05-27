@@ -17,4 +17,5 @@ urlpatterns = [
     path('api/v1/drugs/', DrugListCreateView.as_view(), name='drug-list-create'),
     path('api/v1/prescriptions/', include('prescriptions.urls')),
     path('api/v1/supplier-products/', include('supplier_products.urls')),
+    path("api/v1/notifications/", include("notifications.urls")),
 ]

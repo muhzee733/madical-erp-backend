@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'channels',
     'prescriptions',
     'supplier_products',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -81,7 +82,7 @@ DATABASES = {
         'NAME': 'medical',
         'USER':  'admin',
         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
-        'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
+	'HOST': 'database-1.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
         'PORT': '3306'
     }
 }
@@ -147,3 +148,15 @@ STATIC_URL = 'static/'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Email configuration
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # for dev
+DEFAULT_FROM_EMAIL = 'noreply@promedicine.com.au'
+
+#EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "your_email@gmail.com"
+EMAIL_HOST_PASSWORD = "your_app_password"
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

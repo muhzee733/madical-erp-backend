@@ -12,6 +12,7 @@ from .serializers import (
     AppointmentActionLogSerializer
 )
 from users.permissions import IsDoctor,IsPatient
+from notifications.utils import send_appointment_confirmation
 
 class CreateAvailabilityView(generics.CreateAPIView):
     serializer_class = AppointmentAvailabilitySerializer
@@ -184,12 +185,29 @@ class BookAppointmentView(generics.CreateAPIView):
 
         appointment = serializer.save(patient=self.request.user)
 
+        # Log appointment creation
         AppointmentActionLog.objects.create(
             appointment=appointment,
             action_type="created",
             performed_by=self.request.user
         )
 
+        # Auto-send appointment confirmation
+        patient = appointment.patient
+        start_time = appointment.availability.start_time.strftime('%A, %d %B %Y at %I:%M %p')
+        subject = "Appointment Confirmation"
+        body = (
+            f"Dear {patient.get_full_name()},\n\n"
+            f"Your appointment has been successfully booked for {start_time}.\n\n"
+            "Regards,\nProMedicine Team"
+        )
+
+        send_appointment_confirmation(
+            to_email=patient.email,
+            subject=subject,
+            body=body,
+            related_id=appointment.id
+        )
 
 class CancelAppointmentView(APIView):
     permission_classes = [permissions.IsAuthenticated]

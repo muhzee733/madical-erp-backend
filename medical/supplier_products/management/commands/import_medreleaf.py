@@ -17,17 +17,24 @@ class Command(BaseCommand):
             count = 0
             for _, row in df.iterrows():
                 SupplierProduct.objects.create(
-                    supplier_name="MedReleaf",
-                    brand_name=row.get('Brand', ''),
-                    generic_name=row.get('Product', ''),
-                    dose_form=sheet_name,
-                    strain_type=row.get(df.columns[2], ''),  # Indica/Sativa/Hybrid column
-                    cultivar=row.get('Cultivar', ''),
-                    strength=self.combine_thc_cbd(row),
-                    tga_category=str(row.get('TGA Cat', '')),
-                    retail_price=row.get('Retail', None),
-                    wholesale_price=row.get('Wholesale', None),
-                    pack_size=row.get('Size', '')
+                    supplier_name = "MedReleaf",
+                    brand_name = row.get('Brand', '') or None,
+		    product_name = row.get('Product', '') or None,
+		    generic_name = None,
+		    dose_form = sheet_name,
+    		    strain_type = row.get('Strain Type', '') or None,
+                    cultivar = row.get('Cultivar', '') or None,
+                    strength = self.combine_thc_cbd(row),
+                    tga_category = str(row.get('TGA Cat', '') or ''),
+                    retail_price = self.to_decimal(row.get('Retail')),
+                    wholesale_price = self.to_decimal(row.get('Wholesale')),
+                    pack_size = row.get('Size', '') or None,
+                    packaging_type = None,
+                    artg_no = None,
+                    apn = None,
+                    access_mechanism = None,
+                    poison_schedule = None,
+                    storage_information = None
                 )
                 count += 1
             self.stdout.write(self.style.SUCCESS(f'Imported {count} products from sheet: {sheet_name}'))
@@ -45,3 +52,9 @@ class Command(BaseCommand):
         elif pd.notna(cbd):
             return f"CBD {cbd}"
         return ""
+
+    def to_decimal(self, value):
+        try:
+            return float(value) if pd.notna(value) else None
+        except (ValueError, TypeError):
+            return None

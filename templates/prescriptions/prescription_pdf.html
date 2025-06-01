@@ -10,10 +10,11 @@
     .label { font-weight: bold; }
     .note { color: red; font-size: 0.8em; margin-top: 30px; text-align: center; }
     ul { padding-left: 20px; }
+    img.signature { width: 200px; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h1>Internal Prescription (Draft)</h1>
+  <h1>Internal Prescription ({% if prescription.is_final %}Final{% else %}Draft{% endif %})</h1>
 
   <div class="section">
     <div class="label">Prescriber:</div>
@@ -31,11 +32,11 @@
   </div>
 
   <div class="section">
-    <div class="label">Medications:</div>
+    <div class="label">Medications (Drugs):</div>
     <ul>
       {% for item in items %}
         <li>
-          <strong>{{ item.drug.name }}</strong> ({{ item.drug.strength }})<br>
+          <strong>{{ item.drug.drug_name }}</strong> ({{ item.drug.strength }}, {{ item.drug.form }})<br>
           Dosage: {{ item.dosage }}<br>
           Instructions: {{ item.instructions }}<br>
           Quantity: {{ item.quantity }} | Repeats: {{ item.repeats }}
@@ -43,6 +44,35 @@
       {% endfor %}
     </ul>
   </div>
+
+  {% if supplier_items %}
+  <div class="section">
+    <div class="label">Prescribed Supplier Products:</div>
+    <ul>
+      {% for product in supplier_items %}
+        <li>
+          <strong>{{ product.product.brand_name }}</strong> - {{ product.product.generic_name }}<br>
+          Strength: {{ product.product.strength }}, Form: {{ product.product.dose_form }}<br>
+          Dosage: {{ product.dosage }}<br>
+          Instructions: {{ product.instructions }}<br>
+          Quantity: {{ product.quantity }} | Repeats: {{ product.repeats }}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if prescription.signature_image %}
+  <div class="section">
+    <div class="label">Prescriber Signature:</div>
+    <img src="{{ prescription.signature_image.url }}" alt="Signature" class="signature" />
+  </div>
+  {% else %}
+  <div class="section">
+    <div class="label">Prescriber Signature:</div>
+    <p><em>Unsigned (Draft)</em></p>
+  </div>
+  {% endif %}
 
   {% if prescription.notes %}
   <div class="section">
@@ -52,7 +82,11 @@
   {% endif %}
 
   <div class="note">
-    This is a draft prescription for internal use only. Not valid for dispensing.
+    {% if prescription.is_final %}
+      This is a valid prescription issued by the prescriber.
+    {% else %}
+      This is a draft prescription for internal use only. Not valid for dispensing.
+    {% endif %}
   </div>
 </body>
 </html>

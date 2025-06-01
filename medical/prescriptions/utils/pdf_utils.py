@@ -8,6 +8,7 @@ def generate_prescription_pdf(prescription):
         'doctor': prescription.doctor,
         'patient': prescription.patient,
         'items': prescription.prescribed_drugs.all(),
+        'supplier_items': prescription.prescribed_supplier_products.all(),
     })
 
     with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as output:

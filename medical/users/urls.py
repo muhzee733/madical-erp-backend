@@ -18,6 +18,7 @@ from .views import (
     DoctorProfileDetailView,
     PatientProfileCreateView,
     PatientProfileDetailView,
+    UserDetailView,
 )
 
 urlpatterns = [
@@ -26,10 +27,13 @@ urlpatterns = [
     path("login/",    LoginView.as_view(),    name="login"),
 
     # ───── Admin-level user management endpoints  ─────────
-
     path('admin/users/', AdminUserListView.as_view(), name='admin-user-list'),
     path('admin/users/<int:id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     
+    
+    path("<int:pk>/", UserDetailView.as_view(), name="user-detail"),
+   
+
     # Admin doctor & patient profile management
     path("admin/doctor-profile/<int:doctor_id>/", AdminDoctorProfileView.as_view(),
         name="admin-doctor-profile"),

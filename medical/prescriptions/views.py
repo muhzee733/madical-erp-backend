@@ -16,6 +16,10 @@ from users.permissions import IsDoctor, IsDoctorOrAdmin
 # --------------------
 # DRF API Views
 # --------------------
+class DrugDetailView(generics.RetrieveAPIView):
+    queryset = Drug.objects.all()
+    serializer_class = DrugSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
 class DrugListCreateView(generics.ListCreateAPIView):
     queryset = Drug.objects.all().order_by('id')
@@ -34,8 +38,6 @@ class DrugListCreateView(generics.ListCreateAPIView):
         'infusible_indicator',     
         'is_active',               
     ]
-
-
 
 class PrescriptionCreateView(generics.CreateAPIView):
     queryset = Prescription.objects.all().order_by('id')

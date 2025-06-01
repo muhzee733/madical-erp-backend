@@ -24,4 +24,5 @@ urlpatterns = [
 
     # ──────────────── Logs / Audit ────────────────
     path('<uuid:appointment_id>/logs/', views.AppointmentLogView.as_view(), name='appointment-logs'),
+    path('<uuid:pk>/', views.AppointmentDetailView.as_view(), name='appointment-detail'),
 ]

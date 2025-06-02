@@ -37,13 +37,17 @@ class AppointmentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             'patient',
-            'status',
             'booked_at',
             'rescheduled_from',
             'created_by',
             'updated_by',
             'is_deleted'
         ]
+    
+    
+    def create(self, validated_data):
+        validated_data['patient'] = self.context['request'].user
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
         user = self.context['request'].user
@@ -52,22 +56,15 @@ class AppointmentSerializer(serializers.ModelSerializer):
         if user.role == 'patient':
             allowed_fields = ['note', 'extended_info']
         elif user.role == 'doctor':
-            allowed_fields =['note', 'extended_info', 'availability', 'status']
+            allowed_fields = ['note', 'extended_info', 'availability', 'status']
         elif user.role == 'admin':
             allowed_fields = ['note', 'extended_info', 'availability', 'status']
 
         updated_fields = []
-        changes = []
-
         for field in allowed_fields:
             if field in validated_data:
-                old_value = getattr(instance, field)
-                new_value = validated_data[field]
-                
-                if old_value != new_value:
-                    setattr(instance, field, new_value)
-                    updated_fields.append(field)
-                    changes.append(f"{field}: '{old_value}' → '{new_value}'")
+                setattr(instance, field, validated_data[field])
+                updated_fields.append(field)
 
         if updated_fields:
             instance.updated_by = user
@@ -77,37 +74,36 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 appointment=instance,
                 action_type="updated",
                 performed_by=user,
-                note="; ".join(changes)
+                note=f"Fields updated: {', '.join(updated_fields)}"
             )
 
         return instance
 
     def validate(self, data):
         availability = data.get('availability')
-        if availability.is_booked:
-            raise serializers.ValidationError("This slot is already booked.")
-
         request = self.context.get('request')
         patient = request.user if request else None
 
-        new_start = availability.start_time
-        new_end = availability.end_time
+        # Only validate availability if it's being updated
+        if availability:
+            if availability.is_booked:
+                raise serializers.ValidationError("This slot is already booked.")
 
-        overlapping = Appointment.objects.filter(
-            patient=patient,
-            availability__start_time__lt=new_end,
-            availability__end_time__gt=new_start,
-        ).exclude(status__in=['cancelled_by_patient', 'cancelled_by_doctor'])
+            new_start = availability.start_time
+            new_end = availability.end_time
 
-        if overlapping.exists():
-            raise serializers.ValidationError("You already have an appointment during this time.")
+            overlapping = Appointment.objects.filter(
+                patient=patient,
+                availability__start_time__lt=new_end,
+                availability__end_time__gt=new_start,
+            ).exclude(
+                pk=self.instance.pk if self.instance else None
+            ).exclude(status__in=['cancelled_by_patient', 'cancelled_by_doctor'])
+
+            if overlapping.exists():
+                raise serializers.ValidationError("You already have an appointment during this time.")
 
         return data
-
-    def create(self, validated_data):
-        validated_data['patient'] = self.context['request'].user
-        return super().create(validated_data)
-
 
 class AppointmentActionLogSerializer(serializers.ModelSerializer):
     class Meta:

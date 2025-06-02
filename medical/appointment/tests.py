@@ -344,6 +344,77 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         cancel_response = self.client.post(reverse('cancel-appointment', args=[appointment_id]))
         self.assertEqual(cancel_response.status_code, 200)
 
+class AppointmentUpdateTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.tz = pytz.timezone('Australia/Brisbane')
+
+        self.doctor = User.objects.create_user(email='doc@example.com', password='testpass', role='doctor')
+        self.patient = User.objects.create_user(email='pat@example.com', password='testpass', role='patient')
+        self.admin = User.objects.create_user(email='admin@example.com', password='testpass', role='admin', is_superuser=True)
+
+        start = now().replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        end = start + timedelta(minutes=15)
+
+        self.availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=start,
+            end_time=end,
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=True
+        )
+
+        self.appointment = Appointment.objects.create(
+            patient=self.patient,
+            availability=self.availability,
+            created_by=self.patient,
+            updated_by=self.patient,
+            note="Initial note",
+            extended_info={"reason": "initial"}
+        )
+
+    def test_patient_can_update_note_and_extended_info(self):
+        self.client.force_authenticate(user=self.patient)
+        url = reverse('update-appointment', args=[self.appointment.id])
+        response = self.client.patch(url, {
+            "note": "Updated by patient",
+            "extended_info": {"reason": "flu"}
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.note, "Updated by patient")
+        self.assertEqual(self.appointment.extended_info, {"reason": "flu"})
+
+    def test_doctor_can_update_status(self):
+        self.client.force_authenticate(user=self.doctor)
+        url = reverse('update-appointment', args=[self.appointment.id])
+        response = self.client.patch(url, {
+            "status": "completed",
+            "note": "Seen by doctor"
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.status, "completed")
+        self.assertEqual(self.appointment.note, "Seen by doctor")
+
+    def test_admin_can_update_availability(self):
+        self.client.force_authenticate(user=self.admin)
+        new_availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=now() + timedelta(days=2),
+            end_time=now() + timedelta(days=2, minutes=15),
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )
+        url = reverse('update-appointment', args=[self.appointment.id])
+        response = self.client.patch(url, {
+            "availability": str(new_availability.id)
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.availability.id, new_availability.id)
 
 class AppointmentRescheduleAndStatusTests(APITestCase):
     def setUp(self):

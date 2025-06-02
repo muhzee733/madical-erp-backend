@@ -76,26 +76,17 @@ CHANNEL_LAYERS = {
     },
 }
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-# 	'NAME': 'Medical',
-#         'USER':  'admin',
-#         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
-# 	'HOST': 'database-2.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
-#         'PORT': '3306'
-#     }
-# }
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-	'NAME': 'medical_database',
-        'USER':  'root',
-        'PASSWORD': '0000',
-	'HOST': 'localhost',
+	'NAME': 'Medical',
+        'USER':  'admin',
+        'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
+	'HOST': 'database-2.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
         'PORT': '3306'
     }
 }
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {

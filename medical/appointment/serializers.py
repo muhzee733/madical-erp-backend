@@ -45,6 +45,25 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'is_deleted'
         ]
 
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+
+        allowed_fields = []
+        if user.role == 'patient':
+            allowed_fields = ['note', 'extended_info']
+        elif user.role == 'doctor':
+            allowed_fields = ['note']
+        elif user.role == 'admin':
+            allowed_fields = ['note', 'extended_info', 'availability', 'status']
+
+        for field in allowed_fields:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+
+        instance.updated_by = user
+        instance.save()
+        return instance
+
     def validate(self, data):
         availability = data.get('availability')
         if availability.is_booked:

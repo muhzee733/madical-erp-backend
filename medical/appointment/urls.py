@@ -14,6 +14,7 @@ urlpatterns = [
     path('', views.BookAppointmentView.as_view(), name='book-appointment'),
 
     # ──────────────── Appointment Management ────────────────
+    path('<uuid:pk>/update/', views.UpdateAppointmentView.as_view(), name='update-appointment'),
     path('<uuid:appointment_id>/cancel/', views.CancelAppointmentView.as_view(), name='cancel-appointment'),
     path('<uuid:appointment_id>/reschedule/', views.RescheduleAppointmentView.as_view(), name='reschedule-appointment'),
     path('my/', views.ListMyAppointmentsView.as_view(), name='list-my-appointments'),

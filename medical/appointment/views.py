@@ -219,6 +219,24 @@ class BookAppointmentView(generics.CreateAPIView):
             related_id=appointment.id
         )
 
+class UpdateAppointmentView(generics.UpdateAPIView):
+    queryset = Appointment.objects.all()
+    serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'patient':
+            return Appointment.objects.filter(patient=user, is_deleted=False)
+        elif user.role == 'doctor':
+            return Appointment.objects.filter(availability__doctor=user, is_deleted=False)
+        elif user.role == 'admin':
+            return Appointment.objects.filter(is_deleted=False)
+        return Appointment.objects.none()
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
 class CancelAppointmentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -263,7 +281,6 @@ class CancelAppointmentView(APIView):
         )
 
         return Response({"message": f"Appointment cancelled by {user.role}."}, status=200)
-
 
 class RescheduleAppointmentView(APIView):
     permission_classes = [permissions.IsAuthenticated]

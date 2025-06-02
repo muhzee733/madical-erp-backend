@@ -47,21 +47,39 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         user = self.context['request'].user
-
         allowed_fields = []
+
         if user.role == 'patient':
             allowed_fields = ['note', 'extended_info']
         elif user.role == 'doctor':
-            allowed_fields = ['note']
+            allowed_fields =['note', 'extended_info', 'availability', 'status']
         elif user.role == 'admin':
             allowed_fields = ['note', 'extended_info', 'availability', 'status']
 
+        updated_fields = []
+        changes = []
+
         for field in allowed_fields:
             if field in validated_data:
-                setattr(instance, field, validated_data[field])
+                old_value = getattr(instance, field)
+                new_value = validated_data[field]
+                
+                if old_value != new_value:
+                    setattr(instance, field, new_value)
+                    updated_fields.append(field)
+                    changes.append(f"{field}: '{old_value}' → '{new_value}'")
 
-        instance.updated_by = user
-        instance.save()
+        if updated_fields:
+            instance.updated_by = user
+            instance.save()
+
+            AppointmentActionLog.objects.create(
+                appointment=instance,
+                action_type="updated",
+                performed_by=user,
+                note="; ".join(changes)
+            )
+
         return instance
 
     def validate(self, data):

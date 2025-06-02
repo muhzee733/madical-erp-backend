@@ -243,7 +243,6 @@ class CancelAppointmentView(APIView):
     def post(self, request, appointment_id):
         user = request.user
 
-        # Determine which role is cancelling
         if user.role == 'patient':
             appointment = get_object_or_404(Appointment, id=appointment_id, patient=user)
             # Enforce 1-hour cancellation window for patients only

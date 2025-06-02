@@ -18,12 +18,19 @@ class AppointmentAvailabilitySerializer(serializers.ModelSerializer):
 
 class AppointmentSerializer(serializers.ModelSerializer):
     patient = UserSerializer(read_only=True)
+    availability = AppointmentAvailabilitySerializer(read_only=True)
+    availability_id = serializers.PrimaryKeyRelatedField(
+        queryset=AppointmentAvailability.objects.all(),
+        source='availability',
+        write_only=True
+    )
 
     class Meta:
         model = Appointment
         fields = [
             'id',
             'availability',
+            'availability_id',
             'patient',
             'status',
             'booked_at',

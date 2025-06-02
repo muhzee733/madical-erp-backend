@@ -21,8 +21,29 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = '__all__'
-        read_only_fields = ['id', 'booked_at', 'status', 'rescheduled_from', 'patient']
+        fields = [
+            'id',
+            'availability',
+            'patient',
+            'status',
+            'booked_at',
+            'rescheduled_from',
+            'extended_info',
+            'note',
+            'created_by',
+            'updated_by',
+            'is_deleted'
+        ]
+        read_only_fields = [
+            'id',
+            'patient',
+            'status',
+            'booked_at',
+            'rescheduled_from',
+            'created_by',
+            'updated_by',
+            'is_deleted'
+        ]
 
     def validate(self, data):
         availability = data.get('availability')

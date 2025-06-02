@@ -187,7 +187,10 @@ class BookAppointmentView(generics.CreateAPIView):
         appointment = serializer.save(
             patient=self.request.user,
             created_by=self.request.user,
-            is_deleted=False
+            updated_by=self.request.user,
+            is_deleted=False,
+            extended_info=self.request.data.get('extended_info', None),
+            note=self.request.data.get('note', None)
         )
 
         # Log appointment creation

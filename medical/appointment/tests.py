@@ -1,7 +1,7 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 from django.utils.timezone import now, timedelta
-from users.models import User
+from users.models import DoctorProfile, PatientProfile, User
 from appointment.models import AppointmentActionLog, AppointmentAvailability, Appointment
 import pytz
 import uuid
@@ -273,7 +273,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         response = self.client.get(reverse('list-my-appointments'))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 1)
-        self.assertEqual(response.data['results'][0]['patient'], self.patient.id)
+        self.assertEqual(response.data['results'][0]['patient']['id'], self.patient.id)
 
     def test_doctor_sees_own_appointments(self):
         self.client.force_authenticate(user=self.patient)
@@ -437,6 +437,90 @@ class AppointmentRescheduleAndStatusTests(APITestCase):
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('no-show-appointment', args=[self.original_appointment_id]))
         self.assertEqual(response.status_code, 403)
+
+
+class AppointmentParticipantsTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.tz = pytz.timezone('Australia/Brisbane')
+
+        self.doctor = User.objects.create_user(email='doc@example.com', password='testpass', role='doctor', first_name='Doc')
+        self.patient = User.objects.create_user(email='pat@example.com', password='testpass', role='patient', first_name='Pat')
+
+        self.doctor_profile = DoctorProfile.objects.create(
+            user=self.doctor,
+            gender='male',
+            date_of_birth='1980-01-01',
+            qualification='MBBS',
+            specialty='General Practitioner',
+            medical_registration_number='MRN123456',
+            registration_expiry='2030-12-31',
+            prescriber_number='PRSC1234',
+            provider_number='PROV5678',
+            hpi_i='8003621234567890',
+            digital_signature='-----BEGIN CERTIFICATE-----...-----END CERTIFICATE-----',
+        )
+
+        self.patient_profile = PatientProfile.objects.create(
+            user=self.patient,
+            gender='male',
+            date_of_birth='1990-01-01',
+            contact_address='456 King St, Brisbane QLD 4000',
+            medicare_number='1234567890',
+            irn='1',
+            medicare_expiry='2026-12-31',
+            ihi='8003608166690503'
+        )
+
+        start = now().replace(hour=11, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        end = start + timedelta(minutes=15)
+        self.availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=start,
+            end_time=end,
+            slot_type='short',
+            timezone='Australia/Brisbane'
+        )
+
+        self.client.force_authenticate(user=self.patient)
+        book_response = self.client.post(reverse('book-appointment'), {
+            "availability": str(self.availability.id)
+        }, format='json')
+
+        self.assertEqual(book_response.status_code, 201, msg=f"Booking failed: {book_response.status_code}, {book_response.data}")
+        self.appointment_id = book_response.data["id"]
+
+    def test_doctor_can_view_appointment_participants(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.get(reverse('appointment-participants', args=[self.appointment_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('doctor_user', response.data)
+        self.assertIn('patient_user', response.data)
+        self.assertEqual(response.data['patient_user']['id'], self.patient.id)
+        self.assertEqual(response.data['doctor_user']['id'], self.doctor.id)
+
+    def test_patient_cannot_view_appointment_participants(self):
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.get(reverse('appointment-participants', args=[self.appointment_id]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_unauthenticated_access_returns_401(self):
+        self.client.logout()
+        response = self.client.get(reverse('appointment-participants', args=[self.appointment_id]))
+        self.assertEqual(response.status_code, 401)
+
+    def test_invalid_appointment_id_returns_403_for_patient(self):
+        self.client.force_authenticate(user=self.patient)
+        bad_uuid = uuid.uuid4()
+        response = self.client.get(reverse('appointment-participants', args=[bad_uuid]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_invalid_appointment_id_returns_404_for_doctor(self):
+        self.client.force_authenticate(user=self.doctor)
+        bad_uuid = uuid.uuid4()
+        response = self.client.get(reverse('appointment-participants', args=[bad_uuid]))
+        self.assertEqual(response.status_code, 404)
+
 
 
 class AuditLogAndSecurityTests(APITestCase):

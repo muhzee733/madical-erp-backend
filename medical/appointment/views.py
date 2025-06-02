@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
 import pytz
 
-from medical.users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
+from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
 from .serializers import (
     AppointmentAvailabilitySerializer,
@@ -345,16 +345,17 @@ class AppointmentPartyInfoView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def get(self, request, appointment_id):
-        appointment = get_object_or_404(Appointment, id=appointment_id)
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+        except Appointment.DoesNotExist:
+            return Response({"error": "Appointment not found."}, status=404)
 
-        # Ensure the requesting doctor is the doctor of the appointment
         if appointment.availability.doctor != request.user:
             return Response({"error": "You are not authorized to access this appointment."}, status=403)
 
         patient_user = appointment.patient
         doctor_user = appointment.availability.doctor
 
-        # Related profiles
         patient_profile = getattr(patient_user, 'patientprofile', None)
         doctor_profile = getattr(doctor_user, 'doctorprofile', None)
 

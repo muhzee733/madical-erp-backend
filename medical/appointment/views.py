@@ -184,7 +184,11 @@ class BookAppointmentView(generics.CreateAPIView):
         availability.is_booked = True
         availability.save()
 
-        appointment = serializer.save(patient=self.request.user)
+        appointment = serializer.save(
+            patient=self.request.user,
+            created_by=self.request.user,
+            is_deleted=False
+        )
 
         # Log appointment creation
         AppointmentActionLog.objects.create(
@@ -238,6 +242,7 @@ class CancelAppointmentView(APIView):
 
         # Cancel the appointment
         appointment.status = cancel_status
+        appointment.updated_by = user        
         appointment.save()
 
         # Free the availability slot
@@ -280,16 +285,20 @@ class RescheduleAppointmentView(APIView):
 
         # Mark old as rescheduled
         old_appointment.status = 'rescheduled'
+        old_appointment.updated_by = user
         old_appointment.save()
+
         old_appointment.availability.is_booked = False
         old_appointment.availability.save()
 
         # Create the new appointment
         new_appointment = Appointment.objects.create(
             availability=new_availability,
-            patient=old_appointment.patient,  # preserve the original patient
+            patient=old_appointment.patient,
             status='booked',
-            rescheduled_from=old_appointment
+            rescheduled_from=old_appointment,
+            created_by=user,
+            is_deleted=False
         )
         new_availability.is_booked = True
         new_availability.save()
@@ -310,7 +319,7 @@ class ListMyAppointmentsView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.role == 'doctor':
-            return Appointment.objects.filter(availability__doctor=user).order_by("id")
+            return Appointment.objects.filter(availability__doctor=user, is_deleted=False).order_by("id")
         return Appointment.objects.filter(patient=user).order_by("id")
 
 

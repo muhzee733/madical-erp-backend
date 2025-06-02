@@ -4,6 +4,7 @@ from django.utils.timezone import now
 from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 
 class AppointmentAvailabilitySerializer(serializers.ModelSerializer):
+    doctor = UserSerializer(read_only=True)
     class Meta:
         model = AppointmentAvailability
         fields = '__all__'

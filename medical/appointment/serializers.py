@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
 from django.utils.timezone import now
-from users.serializers import UserSerializer
+from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 
 class AppointmentAvailabilitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -77,3 +77,9 @@ class AppointmentActionLogSerializer(serializers.ModelSerializer):
         model = AppointmentActionLog
         fields = '__all__'
         read_only_fields = ['id', 'performed_at']
+
+class AppointmentPartyInfoSerializer(serializers.Serializer):
+    patient_user = UserSerializer()
+    patient_profile = PatientProfileSerializer()
+    doctor_user = UserSerializer()
+    doctor_profile = DoctorProfileSerializer()

@@ -6,6 +6,8 @@ from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
 import pytz
+
+from medical.users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
 from .serializers import (
     AppointmentAvailabilitySerializer,
@@ -338,3 +340,32 @@ class AppointmentDetailView(generics.RetrieveAPIView):
     queryset = Appointment.objects.select_related('patient', 'availability')
     serializer_class = AppointmentSerializer
     permission_classes = [IsAuthenticated]
+
+class AppointmentPartyInfoView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+
+    def get(self, request, appointment_id):
+        appointment = get_object_or_404(Appointment, id=appointment_id)
+
+        # Ensure the requesting doctor is the doctor of the appointment
+        if appointment.availability.doctor != request.user:
+            return Response({"error": "You are not authorized to access this appointment."}, status=403)
+
+        patient_user = appointment.patient
+        doctor_user = appointment.availability.doctor
+
+        # Related profiles
+        patient_profile = getattr(patient_user, 'patientprofile', None)
+        doctor_profile = getattr(doctor_user, 'doctorprofile', None)
+
+        if not patient_profile or not doctor_profile:
+            return Response({"error": "Profile information is missing."}, status=400)
+
+        data = {
+            "patient_user": UserSerializer(patient_user).data,
+            "patient_profile": PatientProfileSerializer(patient_profile).data,
+            "doctor_user": UserSerializer(doctor_user).data,
+            "doctor_profile": DoctorProfileSerializer(doctor_profile).data,
+        }
+
+        return Response(data, status=200)

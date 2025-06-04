@@ -134,7 +134,8 @@ class CustomAvailabilityView(APIView):
 
         AppointmentAvailability.objects.bulk_create(new_slots)
 
-        return Response({"message": "Custom availability slots created successfully."},
+        serialized_slots = AppointmentAvailabilitySerializer(new_slots, many=True)
+        return Response({"message": "Custom availability slots created successfully.", "slots": serialized_slots.data},
                         status=status.HTTP_201_CREATED)
 
 class EditAvailabilityView(generics.UpdateAPIView):

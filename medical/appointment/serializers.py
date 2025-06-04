@@ -51,7 +51,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'rescheduled_from',
             'created_by',
             'updated_by',
-            'is_deleted'
+            'is_deleted',
             'price',
             'is_initial'
         ]

@@ -38,6 +38,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'rescheduled_from',
             'extended_info',
             'note',
+            'price',
+            'is_initial',
             'created_by',
             'updated_by',
             'is_deleted'
@@ -50,11 +52,23 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'created_by',
             'updated_by',
             'is_deleted'
+            'price',
+            'is_initial'
         ]
-    
-    
+
     def create(self, validated_data):
-        validated_data['patient'] = self.context['request'].user
+        user = self.context['request'].user
+        validated_data['patient'] = user
+
+        # Determine if this is the first appointment for this patient
+        has_prior_appointments = Appointment.objects.filter(
+            patient=user,
+            status__in=["booked", "completed"]
+        ).exists()
+
+        validated_data['is_initial'] = not has_prior_appointments
+        validated_data['price'] = 80.00 if not has_prior_appointments else 50.00
+
         return super().create(validated_data)
 
     def update(self, instance, validated_data):

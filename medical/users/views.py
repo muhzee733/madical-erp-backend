@@ -94,11 +94,6 @@ class RegisterView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
     
 # ──────────────── Doctor profile endpoints ────────────────
-
-class DoctorProfileCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated, IsDoctor]
-    serializer_class   = DoctorProfileSerializer
-
 class DoctorProfileCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsDoctor]
     serializer_class = DoctorProfileSerializer
@@ -136,7 +131,6 @@ class DoctorProfileDetailView(generics.RetrieveUpdateAPIView):
         serializer.save(updated_by=self.request.user)
 
 # ──────────────── Patient profile endpoints ────────────────
-
 class PatientProfileCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     serializer_class = PatientProfileSerializer

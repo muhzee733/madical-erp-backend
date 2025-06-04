@@ -3,6 +3,9 @@ from rest_framework.test import APITestCase, APIClient
 from django.utils.timezone import now, timedelta
 from users.models import DoctorProfile, PatientProfile, User
 from appointment.models import AppointmentActionLog, AppointmentAvailability, Appointment
+from django.urls import reverse
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import pytz
 import uuid
 
@@ -103,6 +106,83 @@ class AvailabilityFullTestSuite(APITestCase):
     def test_patient_cannot_access_bulk_creation(self):
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('bulk-availability'), {}, format='json')
+        self.assertEqual(response.status_code, 403)
+
+    # ───── POST /availabilities/custom/ ─────
+
+    def test_doctor_can_create_multiple_custom_slots(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "10:15", "11:30", "14:15"],
+            "slot_type": "short"
+        }, format='json')
+
+        tz = ZoneInfo("Australia/Brisbane")
+        target_date = datetime(2025, 6, 12).date()
+
+        # Convert start_time to local before date filtering
+        slots = AppointmentAvailability.objects.filter(
+            doctor=self.doctor
+        )
+        local_date_slots = [
+            s for s in slots if s.start_time.astimezone(tz).date() == target_date
+        ]
+
+        self.assertEqual(len(local_date_slots), 4)
+
+    def test_invalid_time_format_fails(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "bad-time"],
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid time format", response.data["error"])
+
+    def test_invalid_slot_type_fails(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "10:00"],
+            "slot_type": "ultra"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid slot_type", response.data["error"])
+
+    def test_detect_overlap_with_existing_slot(self):
+        self.client.force_authenticate(user=self.doctor)
+
+        self.create_availability(self.doctor,
+            start=self.tz.localize(datetime(2025, 6, 12, 9, 0)),
+            end=self.tz.localize(datetime(2025, 6, 12, 9, 15)))
+
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "10:15"],
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("overlaps with existing availability", response.data["error"])
+
+    def test_detect_overlap_within_payload(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "09:10"],  # will overlap if short (15 min)
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("overlap with each other", response.data["error"])
+
+    def test_patient_cannot_create_custom_slots(self):
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00"],
+            "slot_type": "short"
+        }, format='json')
         self.assertEqual(response.status_code, 403)
 
     # ───── GET /availabilities/list/ ─────
@@ -344,6 +424,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         cancel_response = self.client.post(reverse('cancel-appointment', args=[appointment_id]))
         self.assertEqual(cancel_response.status_code, 200)
 
+
 class AppointmentUpdateTests(APITestCase):
     def setUp(self):
         self.client = APIClient()
@@ -415,6 +496,7 @@ class AppointmentUpdateTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.appointment.refresh_from_db()
         self.assertEqual(self.appointment.availability.id, new_availability.id)
+
 
 class AppointmentRescheduleAndStatusTests(APITestCase):
     def setUp(self):
@@ -591,7 +673,6 @@ class AppointmentParticipantsTests(APITestCase):
         bad_uuid = uuid.uuid4()
         response = self.client.get(reverse('appointment-participants', args=[bad_uuid]))
         self.assertEqual(response.status_code, 404)
-
 
 
 class AuditLogAndSecurityTests(APITestCase):

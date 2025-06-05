@@ -31,7 +31,7 @@ class NotificationAutoSendTests(APITestCase):
 
         # Book an appointment (this should auto-trigger an email)
         response = self.client.post(reverse("book-appointment"), {
-            "availability": str(availability.id),
+            "availability_id": str(availability.id),
             "reason": "Checkup"
         }, format="json")
 

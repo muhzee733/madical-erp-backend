@@ -15,6 +15,8 @@ class AppointmentAvailability(models.Model):
     slot_type = models.CharField(max_length=10, choices=SLOT_TYPE_CHOICES)
     timezone = models.CharField(max_length=100)
     is_booked = models.BooleanField(default=False)
+    price = models.DecimalField(max_digits=6, decimal_places=2, default=0.00)
+    is_initial = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

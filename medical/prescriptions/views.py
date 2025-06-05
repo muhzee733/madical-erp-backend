@@ -8,7 +8,7 @@ from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Drug, Prescription
-from .serializers import DrugSerializer, PrescriptionSerializer
+from .serializers import DrugSerializer, PrescriptionSerializer, PrescriptionListSerializer
 from .utils.pdf_utils import generate_prescription_pdf
 from users.permissions import IsDoctor, IsDoctorOrAdmin
 
@@ -46,7 +46,7 @@ class PrescriptionCreateView(generics.CreateAPIView):
 
 
 class PrescriptionListView(generics.ListAPIView):
-    serializer_class = PrescriptionSerializer
+    serializer_class = PrescriptionListSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['doctor', 'patient', 'created_at']

@@ -5,6 +5,7 @@ urlpatterns = [
     # ──────────────── Doctor Availability ────────────────
     path('availabilities/', views.CreateAvailabilityView.as_view(), name='create-availability'),
     path('availabilities/bulk/', views.BulkAvailabilityView.as_view(), name='bulk-availability'),
+    path("availabilities/custom/", views.CustomAvailabilityView.as_view(), name="custom-availability"),
     path('availabilities/list/', views.ListMyAvailabilityView.as_view(), name='list-my-availabilities'),
     path('availabilities/<uuid:pk>/', views.EditAvailabilityView.as_view(), name='edit-availability'),
     path('availabilities/<uuid:pk>/delete/', views.DeleteAvailabilityView.as_view(), name='delete-availability'),

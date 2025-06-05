@@ -5,6 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from django.utils.timezone import make_aware
 import pytz
 
 from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
@@ -70,6 +72,71 @@ class BulkAvailabilityView(APIView):
         AppointmentAvailability.objects.bulk_create(created_slots)
         return Response({"message": f"{len(created_slots)} slots created."}, status=201)
     
+class CustomAvailabilityView(APIView):
+    permission_classes = [IsAuthenticated, IsDoctor]
+
+    SLOT_DURATIONS = {
+        "short": 15,
+        "long": 30,
+    }
+
+    def post(self, request):
+        user = request.user
+        date = request.data.get("date")
+        start_times = request.data.get("start_times", [])
+        slot_type = request.data.get("slot_type", "short")
+        timezone_str = "Australia/Brisbane"
+
+        if not date or not start_times:
+            return Response({"error": "Both 'date' and 'start_times' are required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if slot_type not in self.SLOT_DURATIONS:
+            return Response({"error": "Invalid slot_type. Choose 'short' or 'long'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        duration_minutes = self.SLOT_DURATIONS[slot_type]
+        tz = ZoneInfo(timezone_str)
+
+        new_slots = []
+        for time_str in start_times:
+            try:
+                start_dt = datetime.strptime(f"{date} {time_str}", "%Y-%m-%d %H:%M")
+                start_dt = make_aware(start_dt.replace(tzinfo=None), timezone=tz)
+                end_dt = start_dt + timedelta(minutes=duration_minutes)
+            except ValueError:
+                return Response({"error": f"Invalid time format: {time_str}"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Check for overlap with existing availabilities
+            if AppointmentAvailability.objects.filter(
+                doctor=user,
+                start_time__lt=end_dt,
+                end_time__gt=start_dt
+            ).exists():
+                return Response({"error": f"Time slot {time_str} on {date} overlaps with existing availability."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            new_slots.append(AppointmentAvailability(
+                doctor=user,
+                start_time=start_dt,
+                end_time=end_dt,
+                slot_type=slot_type,
+                timezone=timezone_str,
+            ))
+
+        # Check for overlap among the submitted times themselves
+        sorted_slots = sorted(new_slots, key=lambda x: x.start_time)
+        for i in range(len(sorted_slots) - 1):
+            if sorted_slots[i].end_time > sorted_slots[i + 1].start_time:
+                return Response({"error": "Some start_times in the list overlap with each other."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        AppointmentAvailability.objects.bulk_create(new_slots)
+
+        serialized_slots = AppointmentAvailabilitySerializer(new_slots, many=True)
+        return Response({"message": "Custom availability slots created successfully.", "slots": serialized_slots.data},
+                        status=status.HTTP_201_CREATED)
 
 class EditAvailabilityView(generics.UpdateAPIView):
     queryset = AppointmentAvailability.objects.all().order_by("id")
@@ -181,12 +248,22 @@ class BookAppointmentView(generics.CreateAPIView):
     serializer_class = AppointmentSerializer
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
+    def create(self, request, *args, **kwargs):
+        # Run the serializer and perform_create logic
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        # Return full serialized appointment including `id`
+        return Response(self.get_serializer(self.appointment).data, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         availability = serializer.validated_data['availability']
         availability.is_booked = True
         availability.save()
 
-        appointment = serializer.save(
+        # Save appointment and store for access in `create`
+        self.appointment = serializer.save(
             patient=self.request.user,
             created_by=self.request.user,
             updated_by=self.request.user,
@@ -197,14 +274,14 @@ class BookAppointmentView(generics.CreateAPIView):
 
         # Log appointment creation
         AppointmentActionLog.objects.create(
-            appointment=appointment,
+            appointment=self.appointment,
             action_type="created",
             performed_by=self.request.user
         )
 
         # Auto-send appointment confirmation
-        patient = appointment.patient
-        start_time = appointment.availability.start_time.strftime('%A, %d %B %Y at %I:%M %p')
+        patient = self.appointment.patient
+        start_time = self.appointment.availability.start_time.strftime('%A, %d %B %Y at %I:%M %p')
         subject = "Appointment Confirmation"
         body = (
             f"Dear {patient.get_full_name()},\n\n"
@@ -216,8 +293,9 @@ class BookAppointmentView(generics.CreateAPIView):
             to_email=patient.email,
             subject=subject,
             body=body,
-            related_id=appointment.id
+            related_id=self.appointment.id
         )
+
 
 class UpdateAppointmentView(generics.UpdateAPIView):
     queryset = Appointment.objects.all()

@@ -273,7 +273,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         response = self.client.get(reverse('list-my-appointments'))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 1)
-        self.assertEqual(response.data['results'][0]['patient'], self.patient.id)
+        self.assertEqual(response.data['results'][0]['patient']['id'], self.patient.id)
 
     def test_doctor_sees_own_appointments(self):
         self.client.force_authenticate(user=self.patient)

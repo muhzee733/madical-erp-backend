@@ -1,6 +1,7 @@
 from rest_framework import generics, status, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
@@ -320,3 +321,8 @@ class AppointmentLogView(generics.ListAPIView):
     def get_queryset(self):
         get_object_or_404(Appointment, id=self.kwargs['appointment_id'])
         return AppointmentActionLog.objects.filter(appointment_id=self.kwargs['appointment_id']).order_by("id")
+
+class AppointmentDetailView(generics.RetrieveAPIView):
+    queryset = Appointment.objects.select_related('patient', 'availability')
+    serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated]

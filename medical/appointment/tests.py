@@ -196,7 +196,7 @@ class AvailabilityFullTestSuite(APITestCase):
         # Paginated result
         self.assertGreaterEqual(len(response.data['results']), 1)
         for slot in response.data['results']:
-            self.assertEqual(slot['doctor'], self.doctor.id)
+            self.assertEqual(slot['doctor']['id'], self.doctor.id)
 
     # ───── PUT /availabilities/<pk>/ ─────
 
@@ -306,7 +306,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_patient_can_book_valid_slot(self):
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         self.assertEqual(response.status_code, 201)
         self.availability.refresh_from_db()
@@ -318,14 +318,14 @@ class AppointmentBookingAndCancellationTests(APITestCase):
 
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
     def test_double_booking_same_time_is_prevented(self):
         self.client.force_authenticate(user=self.patient)
         self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
 
         overlap_start = self.future_start + timedelta(minutes=5)
@@ -339,7 +339,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         )
 
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(overlap_slot.id)
+            "availability_id": str(overlap_slot.id)
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
@@ -348,7 +348,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_patient_sees_own_appointments(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         response = self.client.get(reverse('list-my-appointments'))
         self.assertEqual(response.status_code, 200)
@@ -358,21 +358,21 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_doctor_sees_own_appointments(self):
         self.client.force_authenticate(user=self.patient)
         self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
 
         self.client.force_authenticate(user=self.doctor)
         response = self.client.get(reverse('list-my-appointments'))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 1)
-        self.assertEqual(str(response.data['results'][0]['availability']), str(self.availability.id))
+        self.assertEqual(str(response.data['results'][0]['availability']['id']), str(self.availability.id))
 
     # ------------------- POST /appointments/<id>/cancel/ -------------------
 
     def test_patient_can_cancel_appointment_over_1hr(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -394,7 +394,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         )
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(close_availability.id)
+            "availability_id": str(close_availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -405,7 +405,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_doctor_can_cancel_anytime(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -416,7 +416,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_admin_can_cancel_anytime(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -491,7 +491,7 @@ class AppointmentUpdateTests(APITestCase):
         )
         url = reverse('update-appointment', args=[self.appointment.id])
         response = self.client.patch(url, {
-            "availability": str(new_availability.id)
+            "availability_id": str(new_availability.id)
         }, format='json')
         self.assertEqual(response.status_code, 200)
         self.appointment.refresh_from_db()
@@ -527,7 +527,7 @@ class AppointmentRescheduleAndStatusTests(APITestCase):
 
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.original_slot.id)
+            "availability_id": str(self.original_slot.id)
         }, format='json')
         self.original_appointment_id = response.data["id"]
 
@@ -637,7 +637,7 @@ class AppointmentParticipantsTests(APITestCase):
 
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
 
         self.assertEqual(book_response.status_code, 201, msg=f"Booking failed: {book_response.status_code}, {book_response.data}")
@@ -702,7 +702,7 @@ class AuditLogAndSecurityTests(APITestCase):
         # Book appointment
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         self.appointment_id = book_response.data["id"]
 

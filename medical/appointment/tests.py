@@ -263,6 +263,37 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
+    def test_first_and_followup_appointment_pricing(self):
+        self.client.force_authenticate(user=self.patient)
+
+        # Book first appointment
+        response1 = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+        self.assertEqual(response1.status_code, 201)
+        self.assertEqual(response1.data["price"], "80.00")
+        self.assertTrue(response1.data["is_initial"])
+
+        # Create a second available slot for follow-up
+        followup_start = self.future_end + timedelta(minutes=15)
+        followup_end = followup_start + timedelta(minutes=15)
+        followup_slot = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=followup_start,
+            end_time=followup_end,
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )  
+
+        # Book follow-up appointment
+        response2 = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(followup_slot.id)
+        }, format='json')
+        self.assertEqual(response2.status_code, 201)
+        self.assertEqual(response2.data["price"], "50.00")
+        self.assertFalse(response2.data["is_initial"])
+
     # ------------------- GET /appointments/my/ -------------------
 
     def test_patient_sees_own_appointments(self):

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
 from django.utils.timezone import now
+from users.serializers import UserSerializer
 
 class AppointmentAvailabilitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,12 +16,13 @@ class AppointmentAvailabilitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Start time must be in the future.")
         return data
 
-
 class AppointmentSerializer(serializers.ModelSerializer):
+    patient = UserSerializer(read_only=True)
+
     class Meta:
         model = Appointment
         fields = '__all__'
-        read_only_fields = ['id', 'booked_at', 'status', 'rescheduled_from', 'patient']  
+        read_only_fields = ['id', 'booked_at', 'status', 'rescheduled_from', 'patient']
 
     def validate(self, data):
         availability = data.get('availability')

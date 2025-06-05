@@ -8,7 +8,11 @@ from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Drug, Prescription
-from .serializers import DrugSerializer, PrescriptionSerializer, PrescriptionListSerializer
+from .serializers import (
+    DrugSerializer, 
+    PrescriptionSerializer,     # For POST (create)
+    PrescriptionListSerializer  # For GET (list)
+)
 from .utils.pdf_utils import generate_prescription_pdf
 from users.permissions import IsDoctor, IsDoctorOrAdmin
 

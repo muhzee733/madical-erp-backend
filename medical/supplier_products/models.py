@@ -21,4 +21,4 @@ class SupplierProduct(models.Model):
     imported_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.brand_name or self.generic_name or "Unnamed Product"
+        return self.brand_name or self.generic_name or self.cultivar or "Unnamed Product"

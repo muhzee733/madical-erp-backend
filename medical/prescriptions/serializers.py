@@ -67,18 +67,21 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         return prescription
 
 class PrescriptionDrugReadSerializer(serializers.ModelSerializer):
-    drug_name = serializers.CharField(source='drug.name', read_only=True)
+    drug_name = serializers.CharField(source='drug.drug_name', read_only=True)
+    brand_name = serializers.CharField(source='drug.brand_name', read_only=True)
 
     class Meta:
         model = PrescriptionDrug
-        fields = ['drug', 'drug_name', 'dosage', 'instructions', 'quantity', 'repeats']
+        fields = ['drug', 'drug_name', 'brand_name', 'dosage', 'instructions', 'quantity', 'repeats']
 
 class PrescriptionSupplierProductReadSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    brand_name = serializers.CharField(source='product.brand_name', read_only=True)
+    generic_name = serializers.CharField(source='product.generic_name', read_only=True)
+    cultivar = serializers.CharField(source='product.cultivar', read_only=True)
 
     class Meta:
         model = PrescriptionSupplierProduct
-        fields = ['product', 'product_name', 'dosage', 'instructions', 'quantity', 'repeats']
+        fields = ['product', 'brand_name', 'generic_name', 'cultivar', 'dosage', 'instructions', 'quantity', 'repeats']
 
 class PrescriptionListSerializer(serializers.ModelSerializer):
     prescribed_drugs = PrescriptionDrugReadSerializer(many=True, read_only=True)

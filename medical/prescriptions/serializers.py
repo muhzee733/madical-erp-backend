@@ -65,3 +65,41 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             PrescriptionSupplierProduct.objects.create(prescription=prescription, **item)
 
         return prescription
+
+class PrescriptionDrugReadSerializer(serializers.ModelSerializer):
+    drug_name = serializers.CharField(source='drug.drug_name', read_only=True)
+    brand_name = serializers.CharField(source='drug.brand_name', read_only=True)
+
+    class Meta:
+        model = PrescriptionDrug
+        fields = ['drug', 'drug_name', 'brand_name', 'dosage', 'instructions', 'quantity', 'repeats']
+
+class PrescriptionSupplierProductReadSerializer(serializers.ModelSerializer):
+    brand_name = serializers.CharField(source='product.brand_name', read_only=True)
+    generic_name = serializers.CharField(source='product.generic_name', read_only=True)
+    cultivar = serializers.CharField(source='product.cultivar', read_only=True)
+
+    class Meta:
+        model = PrescriptionSupplierProduct
+        fields = ['product', 'brand_name', 'generic_name', 'cultivar', 'dosage', 'instructions', 'quantity', 'repeats']
+
+class PrescriptionListSerializer(serializers.ModelSerializer):
+    prescribed_drugs = PrescriptionDrugReadSerializer(many=True, read_only=True)
+    prescribed_supplier_products = PrescriptionSupplierProductReadSerializer(many=True, read_only=True)
+    doctor_name = serializers.SerializerMethodField()
+    patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Prescription
+        fields = [
+            'id', 'patient', 'patient_name', 'notes', 'created_at', 'signature_image',
+            'is_final', 'prescribed_drugs', 'prescribed_supplier_products',
+            'download_url', 'doctor_name'
+        ]
+
+    def get_doctor_name(self, obj):
+        return f"{obj.doctor.first_name} {obj.doctor.last_name}".strip()
+
+    def get_download_url(self, obj):
+        return f"/api/v1/prescriptions/pdf/{obj.id}/"

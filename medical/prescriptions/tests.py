@@ -2,7 +2,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 from users.models import User
-from prescriptions.models import Drug, Prescription
+from prescriptions.models import Drug, Prescription, PrescriptionDrug, PrescriptionSupplierProduct
 from supplier_products.models import SupplierProduct
 
 
@@ -86,3 +86,39 @@ class PrescriptionViewTests(APITestCase):
         response = self.client.get(self.list_url)
         download_url = response.data["results"][0]["download_url"]
         self.assertTrue(download_url.startswith("/api/v1/prescriptions/pdf/"))
+
+    def test_prescription_list_contains_readable_names(self):
+        prescription = Prescription.objects.create(doctor=self.doctor, patient=self.patient)
+
+        PrescriptionDrug.objects.create(
+            prescription=prescription,
+            drug=self.drug,
+            dosage="2 tablets",
+            instructions="After meals",
+            quantity=1,
+            repeats=0
+        )
+
+        PrescriptionSupplierProduct.objects.create(
+            prescription=prescription,
+            product=self.product,
+            dosage="Apply at night",
+            instructions="External use only",
+            quantity=1,
+            repeats=0
+        )
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rx = response.data["results"][0]
+
+        if rx["prescribed_drugs"]:
+            drug_entry = rx["prescribed_drugs"][0]
+            self.assertIn("drug_name", drug_entry)
+            self.assertIn("brand_name", drug_entry)
+
+        if rx["prescribed_supplier_products"]:
+            product_entry = rx["prescribed_supplier_products"][0]
+            self.assertIn("brand_name", product_entry)
+            self.assertIn("generic_name", product_entry)
+            self.assertIn("cultivar", product_entry)

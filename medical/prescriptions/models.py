@@ -62,8 +62,8 @@ class PrescriptionDrug(models.Model):
     repeats = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return f"{self.drug.name} for Rx#{self.prescription.id}"
-    
+        return f"{self.drug.drug_name or 'Unnamed Drug'} for Rx#{self.prescription.id}"
+
     class Meta:
         ordering = ['id']
 
@@ -77,7 +77,7 @@ class PrescriptionSupplierProduct(models.Model):
     repeats = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return f"{self.product.name} for Rx#{self.prescription.id}"
+        return f"{self.product.product_name or 'Unnamed Product'} for Rx#{self.prescription.id}"
 
     class Meta:
         ordering = ['id']

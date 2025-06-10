@@ -198,6 +198,104 @@ class AvailabilityFullTestSuite(APITestCase):
         for slot in response.data['results']:
             self.assertEqual(slot['doctor']['id'], self.doctor.id)
 
+    def test_patient_can_list_all_availabilities(self):
+        # Create two doctors and availabilities
+        doctor2 = User.objects.create_user(email='doc2@example.com', password='testpass', role='doctor', first_name='Doc2')
+        self.create_availability(self.doctor)
+        self.create_availability(doctor2)
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.get(reverse('list-my-availabilities'))
+        self.assertEqual(response.status_code, 200)
+        # Should see both doctors' availabilities
+        doctor_ids = {slot['doctor']['id'] for slot in response.data['results']}
+        self.assertIn(self.doctor.id, doctor_ids)
+        self.assertIn(doctor2.id, doctor_ids)
+
+    def test_patient_can_filter_availabilities_by_doctor(self):
+        doctor2 = User.objects.create_user(email='doc2@example.com', password='testpass', role='doctor', first_name='Doc2')
+        self.create_availability(self.doctor)
+        self.create_availability(doctor2)
+        self.client.force_authenticate(user=self.patient)
+        url = reverse('list-my-availabilities') + f'?doctor={self.doctor.id}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        for slot in response.data['results']:
+            self.assertEqual(slot['doctor']['id'], self.doctor.id)
+
+    def test_patient_availability_pagination(self):
+        # Create more than default page size (assume 10)
+        for _ in range(12):
+            self.create_availability(self.doctor)
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.get(reverse('list-my-availabilities'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('results', response.data)
+        self.assertLessEqual(len(response.data['results']), 10)  # default page size
+        self.assertIn('count', response.data)
+        self.assertGreaterEqual(response.data['count'], 12)
+
+    def test_admin_gets_no_availabilities(self):
+        admin = User.objects.create_user(email='admin@example.com', password='testpass', role='admin', is_superuser=True)
+        self.create_availability(self.doctor)
+        self.client.force_authenticate(user=admin)
+        response = self.client.get(reverse('list-my-availabilities'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_filter_availabilities_by_start_time(self):
+        self.create_availability(self.doctor, start=now() + timedelta(hours=1), end=now() + timedelta(hours=2))
+        late_slot = self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, hours=1))
+        self.client.force_authenticate(user=self.doctor)
+        # Use space instead of T in datetime string
+        start_time_str = (now() + timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S')
+        url = reverse('list-my-availabilities') + f'?start_time={start_time_str}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(late_slot.id))
+
+    def test_filter_availabilities_by_end_time(self):
+        early_slot = self.create_availability(self.doctor, start=now() + timedelta(hours=1), end=now() + timedelta(hours=2))
+        self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, hours=1))
+        self.client.force_authenticate(user=self.doctor)
+        # Use space instead of T in datetime string
+        end_time_str = (now() + timedelta(hours=2, minutes=1)).strftime('%Y-%m-%d %H:%M:%S')
+        url = reverse('list-my-availabilities') + f'?end_time={end_time_str}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(early_slot.id))
+
+    def test_filter_availabilities_by_is_booked(self):
+        slot1 = self.create_availability(self.doctor)
+        slot2 = self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, minutes=15))
+        slot2.is_booked = True
+        slot2.save()
+        self.client.force_authenticate(user=self.doctor)
+        url = reverse('list-my-availabilities') + '?is_booked=true'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(slot2.id))
+        url = reverse('list-my-availabilities') + '?is_booked=false'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(all(not slot['is_booked'] for slot in response.data['results']))
+
+    def test_filter_availabilities_by_multiple_params(self):
+        slot1 = self.create_availability(self.doctor, start=now() + timedelta(days=1), end=now() + timedelta(days=1, minutes=15))
+        slot2 = self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, minutes=15))
+        slot2.is_booked = True
+        slot2.save()
+        self.client.force_authenticate(user=self.doctor)
+        # Use space instead of T in datetime string
+        start_time_str = (now() + timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S')
+        url = reverse('list-my-availabilities') + f'?start_time={start_time_str}&is_booked=true'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(slot2.id))
+
     # ───── PUT /availabilities/<pk>/ ─────
 
     def test_doctor_can_update_unbooked_availability(self):

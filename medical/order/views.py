@@ -13,6 +13,7 @@ from chat.models import ChatRoom
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 import os
+from django.utils import timezone
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 endpoint_secret = 'whsec_RYQRvalTOecFccc9gtYSmV3GUntjYAQY'
@@ -63,6 +64,18 @@ class CreateOrderAPIView(APIView):
                 appointment = Appointment.objects.get(id=appointment_id)
             except Appointment.DoesNotExist:
                 return Response({"message": "Appointment not found."}, status=status.HTTP_200_OK)
+
+            # Only allow the patient who owns the appointment to create the order
+            if appointment.patient != user:
+                return Response({"message": "You are not allowed to order for this appointment."}, status=status.HTTP_403_FORBIDDEN)
+
+            # Only allow orders for appointments with status 'booked'
+            if appointment.status != 'booked':
+                return Response({"message": f"Cannot order for appointment with status: {appointment.status}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Only allow orders for appointments in the future
+            if appointment.availability.start_time < timezone.now():
+                return Response({"message": "Cannot order for an appointment in the past."}, status=status.HTTP_400_BAD_REQUEST)
             
             if Order.objects.filter(appointment=appointment).exists():
                 return Response({"message": "Appointment already booked."}, status=status.HTTP_200_OK)

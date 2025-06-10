@@ -25,6 +25,12 @@ class AppointmentSerializer(serializers.ModelSerializer):
         source='availability',
         write_only=True
     )
+    reason_type = serializers.ChoiceField(
+        choices=[("initial", "Initial"), ("followup", "Follow-up")],
+        write_only=True,
+        required=False  # optional; fallback to automatic logic if not provided
+    )
+
 
     class Meta:
         model = Appointment
@@ -42,7 +48,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'is_initial',
             'created_by',
             'updated_by',
-            'is_deleted'
+            'is_deleted',
+            'reason_type',
         ]
         read_only_fields = [
             'id',
@@ -52,24 +59,39 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'created_by',
             'updated_by',
             'is_deleted',
-            'price',
-            'is_initial'
+	    'price',
+            'is_initial',
         ]
 
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['patient'] = user
 
-        # Determine if this is the first appointment for this patient
+        # Extract reason_type and remove from validated_data
+        reason_type = validated_data.pop("reason_type", None)
+
+        # Check if patient has booked before
         has_prior_appointments = Appointment.objects.filter(
             patient=user,
             status__in=["booked", "completed"]
         ).exists()
 
-        validated_data['is_initial'] = not has_prior_appointments
-        validated_data['price'] = 80.00 if not has_prior_appointments else 50.00
+        # Only allow follow-up if patient has prior appointments
+        if has_prior_appointments and reason_type == "followup":
+            validated_data['is_initial'] = False
+            validated_data['price'] = 50.00
+        else:
+            validated_data['is_initial'] = True
+            validated_data['price'] = 80.00
+
+        # Optional fields
+        request = self.context.get('request')
+        if request:
+            validated_data['extended_info'] = request.data.get('extended_info')
+            validated_data['note'] = request.data.get('note')
 
         return super().create(validated_data)
+
 
     def update(self, instance, validated_data):
         user = self.context['request'].user

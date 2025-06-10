@@ -218,30 +218,14 @@ class ListMyAvailabilityView(generics.ListAPIView):
 
 
 class ListAvailableAppointmentsView(generics.ListAPIView):
-    serializer_class = AppointmentAvailabilitySerializer
-    permission_classes = [permissions.IsAuthenticated, IsPatient]
+    serializer_class = AppointmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = AppointmentAvailability.objects.filter(is_booked=False, start_time__gte=now()).order_by("id")
-
-        doctor_name = self.request.query_params.get("doctor_name")
-        specialty = self.request.query_params.get("specialty")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
-        slot_type = self.request.query_params.get("slot_type")
-
-        if doctor_name:
-            queryset = queryset.filter(doctor__first_name__icontains=doctor_name)
-        if specialty:
-            queryset = queryset.filter(doctor__doctorprofile__specialty__icontains=specialty)
-        if date_from:
-            queryset = queryset.filter(start_time__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(start_time__date__lte=date_to)
-        if slot_type:
-            queryset = queryset.filter(slot_type=slot_type)
-
-        return queryset
+        user = self.request.user
+        if user.role != 'admin':
+            return Appointment.objects.none()
+        return Appointment.objects.all().order_by("availability__start_time")
 
 
 class BookAppointmentView(generics.CreateAPIView):

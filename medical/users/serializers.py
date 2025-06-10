@@ -42,6 +42,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'role', 'is_active']
 
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'role', 'is_active']
+
 class DoctorProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model  = DoctorProfile

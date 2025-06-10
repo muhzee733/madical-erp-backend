@@ -1,10 +1,16 @@
 from rest_framework import generics, status, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from django.utils.timezone import make_aware
 import pytz
+from rest_framework.pagination import PageNumberPagination
+
+from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
 from .serializers import (
     AppointmentAvailabilitySerializer,
@@ -13,6 +19,11 @@ from .serializers import (
 )
 from users.permissions import IsDoctor,IsPatient
 from notifications.utils import send_appointment_confirmation
+
+class MyAvailabilityPagination(PageNumberPagination):
+    page_size = 10  # default page size
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class CreateAvailabilityView(generics.CreateAPIView):
     serializer_class = AppointmentAvailabilitySerializer
@@ -67,6 +78,71 @@ class BulkAvailabilityView(APIView):
         AppointmentAvailability.objects.bulk_create(created_slots)
         return Response({"message": f"{len(created_slots)} slots created."}, status=201)
     
+class CustomAvailabilityView(APIView):
+    permission_classes = [IsAuthenticated, IsDoctor]
+
+    SLOT_DURATIONS = {
+        "short": 15,
+        "long": 30,
+    }
+
+    def post(self, request):
+        user = request.user
+        date = request.data.get("date")
+        start_times = request.data.get("start_times", [])
+        slot_type = request.data.get("slot_type", "short")
+        timezone_str = "Australia/Brisbane"
+
+        if not date or not start_times:
+            return Response({"error": "Both 'date' and 'start_times' are required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if slot_type not in self.SLOT_DURATIONS:
+            return Response({"error": "Invalid slot_type. Choose 'short' or 'long'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        duration_minutes = self.SLOT_DURATIONS[slot_type]
+        tz = ZoneInfo(timezone_str)
+
+        new_slots = []
+        for time_str in start_times:
+            try:
+                start_dt = datetime.strptime(f"{date} {time_str}", "%Y-%m-%d %H:%M")
+                start_dt = make_aware(start_dt.replace(tzinfo=None), timezone=tz)
+                end_dt = start_dt + timedelta(minutes=duration_minutes)
+            except ValueError:
+                return Response({"error": f"Invalid time format: {time_str}"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Check for overlap with existing availabilities
+            if AppointmentAvailability.objects.filter(
+                doctor=user,
+                start_time__lt=end_dt,
+                end_time__gt=start_dt
+            ).exists():
+                return Response({"error": f"Time slot {time_str} on {date} overlaps with existing availability."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            new_slots.append(AppointmentAvailability(
+                doctor=user,
+                start_time=start_dt,
+                end_time=end_dt,
+                slot_type=slot_type,
+                timezone=timezone_str,
+            ))
+
+        # Check for overlap among the submitted times themselves
+        sorted_slots = sorted(new_slots, key=lambda x: x.start_time)
+        for i in range(len(sorted_slots) - 1):
+            if sorted_slots[i].end_time > sorted_slots[i + 1].start_time:
+                return Response({"error": "Some start_times in the list overlap with each other."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        AppointmentAvailability.objects.bulk_create(new_slots)
+
+        serialized_slots = AppointmentAvailabilitySerializer(new_slots, many=True)
+        return Response({"message": "Custom availability slots created successfully.", "slots": serialized_slots.data},
+                        status=status.HTTP_201_CREATED)
 
 class EditAvailabilityView(generics.UpdateAPIView):
     queryset = AppointmentAvailability.objects.all().order_by("id")
@@ -141,60 +217,84 @@ class MarkAppointmentNoShowView(APIView):
 
 class ListMyAvailabilityView(generics.ListAPIView):
     serializer_class = AppointmentAvailabilitySerializer
-    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = MyAvailabilityPagination  # Enable page & page_size query params
 
     def get_queryset(self):
-        return AppointmentAvailability.objects.filter(doctor=self.request.user).order_by("id")
+        user = self.request.user
+        queryset = AppointmentAvailability.objects.all().order_by("id")
+        if user.role == 'doctor':
+            queryset = queryset.filter(doctor=user)
+        elif user.role == 'patient':
+            doctor_id = self.request.query_params.get('doctor')
+            if doctor_id:
+                queryset = queryset.filter(doctor__id=doctor_id)
+        else:
+            return AppointmentAvailability.objects.none()
 
+        # New query params
+        start_time = self.request.query_params.get('start_time')
+        end_time = self.request.query_params.get('end_time')
+        is_booked = self.request.query_params.get('is_booked')
 
-class ListAvailableAppointmentsView(generics.ListAPIView):
-    serializer_class = AppointmentAvailabilitySerializer
-    permission_classes = [permissions.IsAuthenticated, IsPatient]
-
-    def get_queryset(self):
-        queryset = AppointmentAvailability.objects.filter(is_booked=False, start_time__gte=now()).order_by("id")
-
-        doctor_name = self.request.query_params.get("doctor_name")
-        specialty = self.request.query_params.get("specialty")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
-        slot_type = self.request.query_params.get("slot_type")
-
-        if doctor_name:
-            queryset = queryset.filter(doctor__first_name__icontains=doctor_name)
-        if specialty:
-            queryset = queryset.filter(doctor__doctorprofile__specialty__icontains=specialty)
-        if date_from:
-            queryset = queryset.filter(start_time__date__gte=date_from)
-        if date_to:
-            queryset = queryset.filter(start_time__date__lte=date_to)
-        if slot_type:
-            queryset = queryset.filter(slot_type=slot_type)
+        if start_time:
+            queryset = queryset.filter(start_time__gte=start_time)
+        if end_time:
+            queryset = queryset.filter(end_time__lte=end_time)
+        if is_booked is not None:
+            if is_booked.lower() == 'true':
+                queryset = queryset.filter(is_booked=True)
+            elif is_booked.lower() == 'false':
+                queryset = queryset.filter(is_booked=False)
 
         return queryset
+
+class ListAvailableAppointmentsView(generics.ListAPIView):
+    serializer_class = AppointmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role != 'admin':
+            return Appointment.objects.none()
+        return Appointment.objects.all().order_by("availability__start_time")
 
 
 class BookAppointmentView(generics.CreateAPIView):
     serializer_class = AppointmentSerializer
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
+    def create(self, request, *args, **kwargs):
+        # Run the serializer and perform_create logic
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        # Return full serialized appointment including `id`
+        return Response(self.get_serializer(self.appointment).data, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         availability = serializer.validated_data['availability']
         availability.is_booked = True
         availability.save()
 
-        appointment = serializer.save(patient=self.request.user)
+        # Save appointment and store for access in `create` (this is now handled by serializer)
+        self.appointment = serializer.save(
+            created_by=self.request.user,
+            updated_by=self.request.user,
+            is_deleted=False,
+        )
 
         # Log appointment creation
         AppointmentActionLog.objects.create(
-            appointment=appointment,
+            appointment=self.appointment,
             action_type="created",
             performed_by=self.request.user
         )
 
         # Auto-send appointment confirmation
-        patient = appointment.patient
-        start_time = appointment.availability.start_time.strftime('%A, %d %B %Y at %I:%M %p')
+        patient = self.appointment.patient
+        start_time = self.appointment.availability.start_time.strftime('%A, %d %B %Y at %I:%M %p')
         subject = "Appointment Confirmation"
         body = (
             f"Dear {patient.get_full_name()},\n\n"
@@ -206,8 +306,27 @@ class BookAppointmentView(generics.CreateAPIView):
             to_email=patient.email,
             subject=subject,
             body=body,
-            related_id=appointment.id
+            related_id=self.appointment.id
         )
+
+
+class UpdateAppointmentView(generics.UpdateAPIView):
+    queryset = Appointment.objects.all()
+    serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'patient':
+            return Appointment.objects.filter(patient=user, is_deleted=False)
+        elif user.role == 'doctor':
+            return Appointment.objects.filter(availability__doctor=user, is_deleted=False)
+        elif user.role == 'admin':
+            return Appointment.objects.filter(is_deleted=False)
+        return Appointment.objects.none()
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
 
 class CancelAppointmentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -215,7 +334,6 @@ class CancelAppointmentView(APIView):
     def post(self, request, appointment_id):
         user = request.user
 
-        # Determine which role is cancelling
         if user.role == 'patient':
             appointment = get_object_or_404(Appointment, id=appointment_id, patient=user)
             # Enforce 1-hour cancellation window for patients only
@@ -237,6 +355,7 @@ class CancelAppointmentView(APIView):
 
         # Cancel the appointment
         appointment.status = cancel_status
+        appointment.updated_by = user        
         appointment.save()
 
         # Free the availability slot
@@ -252,7 +371,6 @@ class CancelAppointmentView(APIView):
         )
 
         return Response({"message": f"Appointment cancelled by {user.role}."}, status=200)
-
 
 class RescheduleAppointmentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -279,16 +397,20 @@ class RescheduleAppointmentView(APIView):
 
         # Mark old as rescheduled
         old_appointment.status = 'rescheduled'
+        old_appointment.updated_by = user
         old_appointment.save()
+
         old_appointment.availability.is_booked = False
         old_appointment.availability.save()
 
         # Create the new appointment
         new_appointment = Appointment.objects.create(
             availability=new_availability,
-            patient=old_appointment.patient,  # preserve the original patient
+            patient=old_appointment.patient,
             status='booked',
-            rescheduled_from=old_appointment
+            rescheduled_from=old_appointment,
+            created_by=user,
+            is_deleted=False
         )
         new_availability.is_booked = True
         new_availability.save()
@@ -309,7 +431,7 @@ class ListMyAppointmentsView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.role == 'doctor':
-            return Appointment.objects.filter(availability__doctor=user).order_by("id")
+            return Appointment.objects.filter(availability__doctor=user, is_deleted=False).order_by("id")
         return Appointment.objects.filter(patient=user).order_by("id")
 
 
@@ -320,3 +442,38 @@ class AppointmentLogView(generics.ListAPIView):
     def get_queryset(self):
         get_object_or_404(Appointment, id=self.kwargs['appointment_id'])
         return AppointmentActionLog.objects.filter(appointment_id=self.kwargs['appointment_id']).order_by("id")
+
+class AppointmentDetailView(generics.RetrieveAPIView):
+    queryset = Appointment.objects.select_related('patient', 'availability')
+    serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated]
+
+class AppointmentPartyInfoView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+
+    def get(self, request, appointment_id):
+        try:
+            appointment = Appointment.objects.get(id=appointment_id)
+        except Appointment.DoesNotExist:
+            return Response({"error": "Appointment not found."}, status=404)
+
+        if appointment.availability.doctor != request.user:
+            return Response({"error": "You are not authorized to access this appointment."}, status=403)
+
+        patient_user = appointment.patient
+        doctor_user = appointment.availability.doctor
+
+        patient_profile = getattr(patient_user, 'patientprofile', None)
+        doctor_profile = getattr(doctor_user, 'doctorprofile', None)
+
+        if not patient_profile or not doctor_profile:
+            return Response({"error": "Profile information is missing."}, status=400)
+
+        data = {
+            "patient_user": UserSerializer(patient_user).data,
+            "patient_profile": PatientProfileSerializer(patient_profile).data,
+            "doctor_user": UserSerializer(doctor_user).data,
+            "doctor_profile": DoctorProfileSerializer(doctor_profile).data,
+        }
+
+        return Response(data, status=200)

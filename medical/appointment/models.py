@@ -42,9 +42,16 @@ class Appointment(models.Model):
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="booked")
     booked_at = models.DateTimeField(auto_now_add=True)
     rescheduled_from = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL)
+    extended_info = models.JSONField(null=True, blank=True)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='created_appointments', on_delete=models.SET_NULL, null=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='updated_appointments', on_delete=models.SET_NULL, null=True)
+    is_deleted = models.BooleanField(default=False)
+    price = models.DecimalField(max_digits=6, decimal_places=2, default=0.00)
+    is_initial = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.patient.email} booked with {self.availability.doctor.email}"
+        return f"{self.patient.email} -> {self.availability.doctor.email} [{self.status}]"
 
 
 class AppointmentActionLog(models.Model):

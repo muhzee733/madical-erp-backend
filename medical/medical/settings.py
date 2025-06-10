@@ -117,6 +117,7 @@ AUTH_USER_MODEL = 'users.User'
 # CORS
 CORS_ALLOWED_ORIGINS = [
     "https://promedicine.geeklies.xyz",
+    "http://localhost:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [

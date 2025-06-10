@@ -1,8 +1,11 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 from django.utils.timezone import now, timedelta
-from users.models import User
+from users.models import DoctorProfile, PatientProfile, User
 from appointment.models import AppointmentActionLog, AppointmentAvailability, Appointment
+from django.urls import reverse
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import pytz
 import uuid
 
@@ -105,6 +108,83 @@ class AvailabilityFullTestSuite(APITestCase):
         response = self.client.post(reverse('bulk-availability'), {}, format='json')
         self.assertEqual(response.status_code, 403)
 
+    # ───── POST /availabilities/custom/ ─────
+
+    def test_doctor_can_create_multiple_custom_slots(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "10:15", "11:30", "14:15"],
+            "slot_type": "short"
+        }, format='json')
+
+        tz = ZoneInfo("Australia/Brisbane")
+        target_date = datetime(2025, 6, 12).date()
+
+        # Convert start_time to local before date filtering
+        slots = AppointmentAvailability.objects.filter(
+            doctor=self.doctor
+        )
+        local_date_slots = [
+            s for s in slots if s.start_time.astimezone(tz).date() == target_date
+        ]
+
+        self.assertEqual(len(local_date_slots), 4)
+
+    def test_invalid_time_format_fails(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "bad-time"],
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid time format", response.data["error"])
+
+    def test_invalid_slot_type_fails(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "10:00"],
+            "slot_type": "ultra"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid slot_type", response.data["error"])
+
+    def test_detect_overlap_with_existing_slot(self):
+        self.client.force_authenticate(user=self.doctor)
+
+        self.create_availability(self.doctor,
+            start=self.tz.localize(datetime(2025, 6, 12, 9, 0)),
+            end=self.tz.localize(datetime(2025, 6, 12, 9, 15)))
+
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "10:15"],
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("overlaps with existing availability", response.data["error"])
+
+    def test_detect_overlap_within_payload(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00", "09:10"],  # will overlap if short (15 min)
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("overlap with each other", response.data["error"])
+
+    def test_patient_cannot_create_custom_slots(self):
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.post(reverse('custom-availability'), {
+            "date": "2025-06-12",
+            "start_times": ["09:00"],
+            "slot_type": "short"
+        }, format='json')
+        self.assertEqual(response.status_code, 403)
+
     # ───── GET /availabilities/list/ ─────
 
     def test_doctor_can_list_their_availabilities(self):
@@ -116,7 +196,105 @@ class AvailabilityFullTestSuite(APITestCase):
         # Paginated result
         self.assertGreaterEqual(len(response.data['results']), 1)
         for slot in response.data['results']:
-            self.assertEqual(slot['doctor'], self.doctor.id)
+            self.assertEqual(slot['doctor']['id'], self.doctor.id)
+
+    def test_patient_can_list_all_availabilities(self):
+        # Create two doctors and availabilities
+        doctor2 = User.objects.create_user(email='doc2@example.com', password='testpass', role='doctor', first_name='Doc2')
+        self.create_availability(self.doctor)
+        self.create_availability(doctor2)
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.get(reverse('list-my-availabilities'))
+        self.assertEqual(response.status_code, 200)
+        # Should see both doctors' availabilities
+        doctor_ids = {slot['doctor']['id'] for slot in response.data['results']}
+        self.assertIn(self.doctor.id, doctor_ids)
+        self.assertIn(doctor2.id, doctor_ids)
+
+    def test_patient_can_filter_availabilities_by_doctor(self):
+        doctor2 = User.objects.create_user(email='doc2@example.com', password='testpass', role='doctor', first_name='Doc2')
+        self.create_availability(self.doctor)
+        self.create_availability(doctor2)
+        self.client.force_authenticate(user=self.patient)
+        url = reverse('list-my-availabilities') + f'?doctor={self.doctor.id}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        for slot in response.data['results']:
+            self.assertEqual(slot['doctor']['id'], self.doctor.id)
+
+    def test_patient_availability_pagination(self):
+        # Create more than default page size (assume 10)
+        for _ in range(12):
+            self.create_availability(self.doctor)
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.get(reverse('list-my-availabilities'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('results', response.data)
+        self.assertLessEqual(len(response.data['results']), 10)  # default page size
+        self.assertIn('count', response.data)
+        self.assertGreaterEqual(response.data['count'], 12)
+
+    def test_admin_gets_no_availabilities(self):
+        admin = User.objects.create_user(email='admin@example.com', password='testpass', role='admin', is_superuser=True)
+        self.create_availability(self.doctor)
+        self.client.force_authenticate(user=admin)
+        response = self.client.get(reverse('list-my-availabilities'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_filter_availabilities_by_start_time(self):
+        self.create_availability(self.doctor, start=now() + timedelta(hours=1), end=now() + timedelta(hours=2))
+        late_slot = self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, hours=1))
+        self.client.force_authenticate(user=self.doctor)
+        # Use space instead of T in datetime string
+        start_time_str = (now() + timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S')
+        url = reverse('list-my-availabilities') + f'?start_time={start_time_str}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(late_slot.id))
+
+    def test_filter_availabilities_by_end_time(self):
+        early_slot = self.create_availability(self.doctor, start=now() + timedelta(hours=1), end=now() + timedelta(hours=2))
+        self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, hours=1))
+        self.client.force_authenticate(user=self.doctor)
+        # Use space instead of T in datetime string
+        end_time_str = (now() + timedelta(hours=2, minutes=1)).strftime('%Y-%m-%d %H:%M:%S')
+        url = reverse('list-my-availabilities') + f'?end_time={end_time_str}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(early_slot.id))
+
+    def test_filter_availabilities_by_is_booked(self):
+        slot1 = self.create_availability(self.doctor)
+        slot2 = self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, minutes=15))
+        slot2.is_booked = True
+        slot2.save()
+        self.client.force_authenticate(user=self.doctor)
+        url = reverse('list-my-availabilities') + '?is_booked=true'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(slot2.id))
+        url = reverse('list-my-availabilities') + '?is_booked=false'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(all(not slot['is_booked'] for slot in response.data['results']))
+
+    def test_filter_availabilities_by_multiple_params(self):
+        slot1 = self.create_availability(self.doctor, start=now() + timedelta(days=1), end=now() + timedelta(days=1, minutes=15))
+        slot2 = self.create_availability(self.doctor, start=now() + timedelta(days=2), end=now() + timedelta(days=2, minutes=15))
+        slot2.is_booked = True
+        slot2.save()
+        self.client.force_authenticate(user=self.doctor)
+        # Use space instead of T in datetime string
+        start_time_str = (now() + timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S')
+        url = reverse('list-my-availabilities') + f'?start_time={start_time_str}&is_booked=true'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(slot2.id))
 
     # ───── PUT /availabilities/<pk>/ ─────
 
@@ -204,29 +382,31 @@ class AppointmentBookingAndCancellationTests(APITestCase):
 
     # ------------------- GET /appointments/all/ -------------------
 
-    def test_patient_sees_only_future_available_slots(self):
+    def test_admin_can_see_all_appointments(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(reverse('list-available-appointments'))
+        self.assertEqual(response.status_code, 200)
+        # Admin should see all appointments (at least one exists from setUp)
+        self.assertGreaterEqual(len(response.data['results']), 0)
+
+    def test_patient_cannot_see_any_appointments(self):
         self.client.force_authenticate(user=self.patient)
         response = self.client.get(reverse('list-available-appointments'))
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(all(not slot['is_booked'] for slot in response.data['results']))
+        self.assertEqual(len(response.data['results']), 0)
 
-    def test_filtering_available_slots(self):
-        self.client.force_authenticate(user=self.patient)
-        response = self.client.get(reverse('list-available-appointments'), {
-            "doctor_name": "doc",
-            "slot_type": "short",
-            "date_from": self.future_start.date().isoformat(),
-            "date_to": self.future_end.date().isoformat(),
-        })
+    def test_doctor_cannot_see_any_appointments(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.get(reverse('list-available-appointments'))
         self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(len(response.data['results']), 1)
+        self.assertEqual(len(response.data['results']), 0)
 
     # ------------------- POST /appointments/ -------------------
 
     def test_patient_can_book_valid_slot(self):
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         self.assertEqual(response.status_code, 201)
         self.availability.refresh_from_db()
@@ -238,14 +418,14 @@ class AppointmentBookingAndCancellationTests(APITestCase):
 
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
     def test_double_booking_same_time_is_prevented(self):
         self.client.force_authenticate(user=self.patient)
         self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
 
         overlap_start = self.future_start + timedelta(minutes=5)
@@ -259,40 +439,176 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         )
 
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(overlap_slot.id)
+            "availability_id": str(overlap_slot.id)
         }, format='json')
         self.assertEqual(response.status_code, 400)
+
+    def test_first_appointment_defaults_to_initial(self):
+        self.client.force_authenticate(user=self.patient)
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["price"], "80.00")
+        self.assertTrue(response.data["is_initial"])
+
+    def test_followup_reason_type_sets_price_50(self):
+        self.client.force_authenticate(user=self.patient)
+
+        # Book first appointment
+        self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        # Book follow-up
+        followup_slot = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=self.future_end + timedelta(minutes=15),
+            end_time=self.future_end + timedelta(minutes=30),
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(followup_slot.id),
+            "reason_type": "followup"
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["price"], "50.00")
+        self.assertFalse(response.data["is_initial"])
+
+    def test_first_and_followup_appointment_pricing(self):
+        self.client.force_authenticate(user=self.patient)
+
+        # Book first appointment
+        response1 = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+        self.assertEqual(response1.status_code, 201)
+        self.assertEqual(response1.data["price"], "80.00")
+        self.assertTrue(response1.data["is_initial"])
+
+        # Create a second available slot for follow-up
+        followup_start = self.future_end + timedelta(minutes=15)
+        followup_end = followup_start + timedelta(minutes=15)
+        followup_slot = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=followup_start,
+            end_time=followup_end,
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )  
+
+        # Book follow-up appointment
+        response2 = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(followup_slot.id),
+            "reason_type": "followup"
+        }, format='json')
+        self.assertEqual(response2.status_code, 201)
+        self.assertEqual(response2.data["price"], "50.00")
+        self.assertFalse(response2.data["is_initial"])
+
+    def test_repeat_appointment_as_new_issue_is_80(self):
+        self.client.force_authenticate(user=self.patient)
+
+        # Book first appointment
+        self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        # Book another appointment, marking it as "initial" again
+        another_slot = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=self.future_end + timedelta(minutes=45),
+            end_time=self.future_end + timedelta(minutes=60),
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(another_slot.id),
+            "reason_type": "initial"
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["price"], "80.00")
+        self.assertTrue(response.data["is_initial"])
+
+
+    def test_patient_cannot_override_is_initial_flag(self):
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id),
+            "is_initial": False  # Try to override manually
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["is_initial"])  # Still treated as initial
+        self.assertEqual(response.data["price"], "80.00")
+
+    def test_appointment_with_different_doctor_is_initial(self):
+        # Book initial appointment with first doctor
+        self.client.force_authenticate(user=self.patient)
+        self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        # Setup second doctor and availability
+        other_doctor = User.objects.create_user(email='doc2@example.com', password='pass', role='doctor')
+        start = self.availability.end_time + timedelta(minutes=30)
+        end = start + timedelta(minutes=15)
+        second_avail = AppointmentAvailability.objects.create(
+            doctor=other_doctor,
+            start_time=start,
+            end_time=end,
+            slot_type='short',
+            timezone='Australia/Brisbane'
+        )
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(second_avail.id)
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["is_initial"])
+        self.assertEqual(response.data["price"], "80.00")
+
 
     # ------------------- GET /appointments/my/ -------------------
 
     def test_patient_sees_own_appointments(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         response = self.client.get(reverse('list-my-appointments'))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 1)
-        self.assertEqual(response.data['results'][0]['patient'], self.patient.id)
+        self.assertEqual(response.data['results'][0]['patient']['id'], self.patient.id)
 
     def test_doctor_sees_own_appointments(self):
         self.client.force_authenticate(user=self.patient)
         self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
 
         self.client.force_authenticate(user=self.doctor)
         response = self.client.get(reverse('list-my-appointments'))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 1)
-        self.assertEqual(str(response.data['results'][0]['availability']), str(self.availability.id))
+        self.assertEqual(str(response.data['results'][0]['availability']['id']), str(self.availability.id))
 
     # ------------------- POST /appointments/<id>/cancel/ -------------------
 
     def test_patient_can_cancel_appointment_over_1hr(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -314,7 +630,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         )
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(close_availability.id)
+            "availability_id": str(close_availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -325,7 +641,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_doctor_can_cancel_anytime(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
@@ -336,13 +652,86 @@ class AppointmentBookingAndCancellationTests(APITestCase):
     def test_admin_can_cancel_anytime(self):
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         appointment_id = book_response.data['id']
 
         self.client.force_authenticate(user=self.admin)
         cancel_response = self.client.post(reverse('cancel-appointment', args=[appointment_id]))
         self.assertEqual(cancel_response.status_code, 200)
+
+
+class AppointmentUpdateTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.tz = pytz.timezone('Australia/Brisbane')
+
+        self.doctor = User.objects.create_user(email='doc@example.com', password='testpass', role='doctor')
+        self.patient = User.objects.create_user(email='pat@example.com', password='testpass', role='patient')
+        self.admin = User.objects.create_user(email='admin@example.com', password='testpass', role='admin', is_superuser=True)
+
+        start = now().replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        end = start + timedelta(minutes=15)
+
+        self.availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=start,
+            end_time=end,
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=True
+        )
+
+        self.appointment = Appointment.objects.create(
+            patient=self.patient,
+            availability=self.availability,
+            created_by=self.patient,
+            updated_by=self.patient,
+            note="Initial note",
+            extended_info={"reason": "initial"}
+        )
+
+    def test_patient_can_update_note_and_extended_info(self):
+        self.client.force_authenticate(user=self.patient)
+        url = reverse('update-appointment', args=[self.appointment.id])
+        response = self.client.patch(url, {
+            "note": "Updated by patient",
+            "extended_info": {"reason": "flu"}
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.note, "Updated by patient")
+        self.assertEqual(self.appointment.extended_info, {"reason": "flu"})
+
+    def test_doctor_can_update_status(self):
+        self.client.force_authenticate(user=self.doctor)
+        url = reverse('update-appointment', args=[self.appointment.id])
+        response = self.client.patch(url, {
+            "status": "completed",
+            "note": "Seen by doctor"
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.status, "completed")
+        self.assertEqual(self.appointment.note, "Seen by doctor")
+
+    def test_admin_can_update_availability(self):
+        self.client.force_authenticate(user=self.admin)
+        new_availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=now() + timedelta(days=2),
+            end_time=now() + timedelta(days=2, minutes=15),
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )
+        url = reverse('update-appointment', args=[self.appointment.id])
+        response = self.client.patch(url, {
+            "availability_id": str(new_availability.id)
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.availability.id, new_availability.id)
 
 
 class AppointmentRescheduleAndStatusTests(APITestCase):
@@ -374,7 +763,7 @@ class AppointmentRescheduleAndStatusTests(APITestCase):
 
         self.client.force_authenticate(user=self.patient)
         response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.original_slot.id)
+            "availability_id": str(self.original_slot.id)
         }, format='json')
         self.original_appointment_id = response.data["id"]
 
@@ -439,6 +828,89 @@ class AppointmentRescheduleAndStatusTests(APITestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class AppointmentParticipantsTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.tz = pytz.timezone('Australia/Brisbane')
+
+        self.doctor = User.objects.create_user(email='doc@example.com', password='testpass', role='doctor', first_name='Doc')
+        self.patient = User.objects.create_user(email='pat@example.com', password='testpass', role='patient', first_name='Pat')
+
+        self.doctor_profile = DoctorProfile.objects.create(
+            user=self.doctor,
+            gender='male',
+            date_of_birth='1980-01-01',
+            qualification='MBBS',
+            specialty='General Practitioner',
+            medical_registration_number='MRN123456',
+            registration_expiry='2030-12-31',
+            prescriber_number='PRSC1234',
+            provider_number='PROV5678',
+            hpi_i='8003621234567890',
+            digital_signature='-----BEGIN CERTIFICATE-----...-----END CERTIFICATE-----',
+        )
+
+        self.patient_profile = PatientProfile.objects.create(
+            user=self.patient,
+            gender='male',
+            date_of_birth='1990-01-01',
+            contact_address='456 King St, Brisbane QLD 4000',
+            medicare_number='1234567890',
+            irn='1',
+            medicare_expiry='2026-12-31',
+            ihi='8003608166690503'
+        )
+
+        start = now().replace(hour=11, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        end = start + timedelta(minutes=15)
+        self.availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=start,
+            end_time=end,
+            slot_type='short',
+            timezone='Australia/Brisbane'
+        )
+
+        self.client.force_authenticate(user=self.patient)
+        book_response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        self.assertEqual(book_response.status_code, 201, msg=f"Booking failed: {book_response.status_code}, {book_response.data}")
+        self.appointment_id = book_response.data["id"]
+
+    def test_doctor_can_view_appointment_participants(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.get(reverse('appointment-participants', args=[self.appointment_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('doctor_user', response.data)
+        self.assertIn('patient_user', response.data)
+        self.assertEqual(response.data['patient_user']['id'], self.patient.id)
+        self.assertEqual(response.data['doctor_user']['id'], self.doctor.id)
+
+    def test_patient_cannot_view_appointment_participants(self):
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.get(reverse('appointment-participants', args=[self.appointment_id]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_unauthenticated_access_returns_401(self):
+        self.client.logout()
+        response = self.client.get(reverse('appointment-participants', args=[self.appointment_id]))
+        self.assertEqual(response.status_code, 401)
+
+    def test_invalid_appointment_id_returns_403_for_patient(self):
+        self.client.force_authenticate(user=self.patient)
+        bad_uuid = uuid.uuid4()
+        response = self.client.get(reverse('appointment-participants', args=[bad_uuid]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_invalid_appointment_id_returns_404_for_doctor(self):
+        self.client.force_authenticate(user=self.doctor)
+        bad_uuid = uuid.uuid4()
+        response = self.client.get(reverse('appointment-participants', args=[bad_uuid]))
+        self.assertEqual(response.status_code, 404)
+
+
 class AuditLogAndSecurityTests(APITestCase):
     def setUp(self):
         AppointmentAvailability.objects.all().delete()
@@ -466,7 +938,7 @@ class AuditLogAndSecurityTests(APITestCase):
         # Book appointment
         self.client.force_authenticate(user=self.patient)
         book_response = self.client.post(reverse('book-appointment'), {
-            "availability": str(self.availability.id)
+            "availability_id": str(self.availability.id)
         }, format='json')
         self.appointment_id = book_response.data["id"]
 

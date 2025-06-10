@@ -6,10 +6,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import permissions
 
 from .models import User, DoctorProfile, PatientProfile
 from .serializers import (
     AdminUserSerializer,
+    UserSerializer,
     RegisterSerializer,
     DoctorProfileSerializer,
     PatientProfileSerializer,
@@ -92,11 +94,6 @@ class RegisterView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
     
 # ──────────────── Doctor profile endpoints ────────────────
-
-class DoctorProfileCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated, IsDoctor]
-    serializer_class   = DoctorProfileSerializer
-
 class DoctorProfileCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsDoctor]
     serializer_class = DoctorProfileSerializer
@@ -134,7 +131,6 @@ class DoctorProfileDetailView(generics.RetrieveUpdateAPIView):
         serializer.save(updated_by=self.request.user)
 
 # ──────────────── Patient profile endpoints ────────────────
-
 class PatientProfileCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     serializer_class = PatientProfileSerializer
@@ -235,6 +231,11 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
     lookup_field = 'id'
 
+# ───── Get User by ID ───────────────────────────────
+class UserDetailView(generics.RetrieveAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
 # ──────────────── Dashboards ────────────────
 

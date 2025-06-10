@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from django.utils.timezone import make_aware
 import pytz
+from rest_framework.pagination import PageNumberPagination
 
 from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
@@ -18,6 +19,11 @@ from .serializers import (
 )
 from users.permissions import IsDoctor,IsPatient
 from notifications.utils import send_appointment_confirmation
+
+class MyAvailabilityPagination(PageNumberPagination):
+    page_size = 10  # default page size
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class CreateAvailabilityView(generics.CreateAPIView):
     serializer_class = AppointmentAvailabilitySerializer
@@ -211,11 +217,37 @@ class MarkAppointmentNoShowView(APIView):
 
 class ListMyAvailabilityView(generics.ListAPIView):
     serializer_class = AppointmentAvailabilitySerializer
-    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = MyAvailabilityPagination  # Enable page & page_size query params
 
     def get_queryset(self):
-        return AppointmentAvailability.objects.filter(doctor=self.request.user).order_by("id")
+        user = self.request.user
+        queryset = AppointmentAvailability.objects.all().order_by("id")
+        if user.role == 'doctor':
+            queryset = queryset.filter(doctor=user)
+        elif user.role == 'patient':
+            doctor_id = self.request.query_params.get('doctor')
+            if doctor_id:
+                queryset = queryset.filter(doctor__id=doctor_id)
+        else:
+            return AppointmentAvailability.objects.none()
 
+        # New query params
+        start_time = self.request.query_params.get('start_time')
+        end_time = self.request.query_params.get('end_time')
+        is_booked = self.request.query_params.get('is_booked')
+
+        if start_time:
+            queryset = queryset.filter(start_time__gte=start_time)
+        if end_time:
+            queryset = queryset.filter(end_time__lte=end_time)
+        if is_booked is not None:
+            if is_booked.lower() == 'true':
+                queryset = queryset.filter(is_booked=True)
+            elif is_booked.lower() == 'false':
+                queryset = queryset.filter(is_booked=False)
+
+        return queryset
 
 class ListAvailableAppointmentsView(generics.ListAPIView):
     serializer_class = AppointmentSerializer

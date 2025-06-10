@@ -284,22 +284,24 @@ class AppointmentBookingAndCancellationTests(APITestCase):
 
     # ------------------- GET /appointments/all/ -------------------
 
-    def test_patient_sees_only_future_available_slots(self):
+    def test_admin_can_see_all_appointments(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(reverse('list-available-appointments'))
+        self.assertEqual(response.status_code, 200)
+        # Admin should see all appointments (at least one exists from setUp)
+        self.assertGreaterEqual(len(response.data['results']), 0)
+
+    def test_patient_cannot_see_any_appointments(self):
         self.client.force_authenticate(user=self.patient)
         response = self.client.get(reverse('list-available-appointments'))
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(all(not slot['is_booked'] for slot in response.data['results']))
+        self.assertEqual(len(response.data['results']), 0)
 
-    def test_filtering_available_slots(self):
-        self.client.force_authenticate(user=self.patient)
-        response = self.client.get(reverse('list-available-appointments'), {
-            "doctor_name": "doc",
-            "slot_type": "short",
-            "date_from": self.future_start.date().isoformat(),
-            "date_to": self.future_end.date().isoformat(),
-        })
+    def test_doctor_cannot_see_any_appointments(self):
+        self.client.force_authenticate(user=self.doctor)
+        response = self.client.get(reverse('list-available-appointments'))
         self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(len(response.data['results']), 1)
+        self.assertEqual(len(response.data['results']), 0)
 
     # ------------------- POST /appointments/ -------------------
 

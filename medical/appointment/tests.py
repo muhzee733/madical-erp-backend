@@ -345,6 +345,44 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
+    def test_first_appointment_defaults_to_initial(self):
+        self.client.force_authenticate(user=self.patient)
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["price"], "80.00")
+        self.assertTrue(response.data["is_initial"])
+
+    def test_followup_reason_type_sets_price_50(self):
+        self.client.force_authenticate(user=self.patient)
+
+        # Book first appointment
+        self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        # Book follow-up
+        followup_slot = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=self.future_end + timedelta(minutes=15),
+            end_time=self.future_end + timedelta(minutes=30),
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(followup_slot.id),
+            "reason_type": "followup"
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["price"], "50.00")
+        self.assertFalse(response.data["is_initial"])
+
     def test_first_and_followup_appointment_pricing(self):
         self.client.force_authenticate(user=self.patient)
 
@@ -370,11 +408,78 @@ class AppointmentBookingAndCancellationTests(APITestCase):
 
         # Book follow-up appointment
         response2 = self.client.post(reverse('book-appointment'), {
-            "availability_id": str(followup_slot.id)
+            "availability_id": str(followup_slot.id),
+            "reason_type": "followup"
         }, format='json')
         self.assertEqual(response2.status_code, 201)
         self.assertEqual(response2.data["price"], "50.00")
         self.assertFalse(response2.data["is_initial"])
+
+    def test_repeat_appointment_as_new_issue_is_80(self):
+        self.client.force_authenticate(user=self.patient)
+
+        # Book first appointment
+        self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        # Book another appointment, marking it as "initial" again
+        another_slot = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=self.future_end + timedelta(minutes=45),
+            end_time=self.future_end + timedelta(minutes=60),
+            slot_type='short',
+            timezone='Australia/Brisbane',
+            is_booked=False
+        )
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(another_slot.id),
+            "reason_type": "initial"
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["price"], "80.00")
+        self.assertTrue(response.data["is_initial"])
+
+
+    def test_patient_cannot_override_is_initial_flag(self):
+        self.client.force_authenticate(user=self.patient)
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id),
+            "is_initial": False  # Try to override manually
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["is_initial"])  # Still treated as initial
+        self.assertEqual(response.data["price"], "80.00")
+
+    def test_appointment_with_different_doctor_is_initial(self):
+        # Book initial appointment with first doctor
+        self.client.force_authenticate(user=self.patient)
+        self.client.post(reverse('book-appointment'), {
+            "availability_id": str(self.availability.id)
+        }, format='json')
+
+        # Setup second doctor and availability
+        other_doctor = User.objects.create_user(email='doc2@example.com', password='pass', role='doctor')
+        start = self.availability.end_time + timedelta(minutes=30)
+        end = start + timedelta(minutes=15)
+        second_avail = AppointmentAvailability.objects.create(
+            doctor=other_doctor,
+            start_time=start,
+            end_time=end,
+            slot_type='short',
+            timezone='Australia/Brisbane'
+        )
+
+        response = self.client.post(reverse('book-appointment'), {
+            "availability_id": str(second_avail.id)
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["is_initial"])
+        self.assertEqual(response.data["price"], "80.00")
+
 
     # ------------------- GET /appointments/my/ -------------------
 

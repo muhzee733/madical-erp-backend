@@ -246,14 +246,11 @@ class BookAppointmentView(generics.CreateAPIView):
         availability.is_booked = True
         availability.save()
 
-        # Save appointment and store for access in `create`
+        # Save appointment and store for access in `create` (this is now handled by serializer)
         self.appointment = serializer.save(
-            patient=self.request.user,
             created_by=self.request.user,
             updated_by=self.request.user,
             is_deleted=False,
-            extended_info=self.request.data.get('extended_info', None),
-            note=self.request.data.get('note', None)
         )
 
         # Log appointment creation

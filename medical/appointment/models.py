@@ -27,7 +27,9 @@ class AppointmentAvailability(models.Model):
 
 class Appointment(models.Model):
     STATUS_CHOICES = [
+        ("pending", "Pending"),
         ("booked", "Booked"),
+        ("payment_expired", "Payment Expired"),
         ("cancelled_by_patient", "Cancelled by Patient"),
         ("cancelled_by_doctor", "Cancelled by Doctor"),
         ("cancelled_by_admin", "Cancelled by Admin"),

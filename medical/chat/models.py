@@ -6,7 +6,7 @@ User = get_user_model()
 class ChatRoom(models.Model):
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='patient_rooms')
     doctor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='doctor_rooms')
-    appointment = models.OneToOneField('appointment.AppointmentAvailability', on_delete=models.CASCADE)
+    appointment = models.OneToOneField('appointment.Appointment', on_delete=models.CASCADE)  # changed to Appointment
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, default='active')
 

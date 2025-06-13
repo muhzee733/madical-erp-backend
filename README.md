@@ -90,6 +90,53 @@ python manage.py test prescriptions
 python manage.py test appointment
 ```
 
+### 10. Redis Setup for Celery (Local Development)
+
+Celery requires a message broker. We use **Redis** for local development.
+
+#### Windows
+1. Download Redis for Windows from the official releases:
+   - https://github.com/tporadowski/redis/releases
+2. Extract the downloaded zip file.
+3. Open a Command Prompt in the extracted folder.
+4. Start Redis by running:
+   ```
+   redis-server.exe
+   ```
+   Leave this window open while you use Celery and Django.
+
+#### macOS (with Homebrew)
+```bash
+brew install redis
+brew services start redis
+```
+
+#### Linux (Debian/Ubuntu)
+```bash
+sudo apt-get update
+sudo apt-get install redis-server
+sudo service redis-server start
+```
+
+#### Verify Redis is Running
+You can check if Redis is running by connecting with the CLI:
+```bash
+redis-cli ping
+```
+You should see: `PONG`
+
+---
+
+### Running Celery Worker
+
+After Redis is running, start the Celery worker in your project root:
+
+```bash
+celery -A medical worker --loglevel=info -P solo
+```
+**Note:** On Windows, always use the `-P solo` option.
+
+---
 
 
 ## User Endpoints

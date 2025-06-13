@@ -6,13 +6,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from .models import Order
-from appointment.models import AppointmentAvailability
+from appointment.models import Appointment
 from users.permissions import IsPatient
 from .serializers import OrderSerializer
 from chat.models import ChatRoom
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 import os
+from django.utils import timezone
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 endpoint_secret = 'whsec_RYQRvalTOecFccc9gtYSmV3GUntjYAQY'
@@ -44,6 +45,10 @@ def stripe_webhook(request):
             order.status = 'paid'
             order.payment_intent = payment_intent
             order.save()
+            # Set appointment status to 'booked' when payment is successful
+            appointment = order.appointment
+            appointment.status = 'booked'
+            appointment.save()
         except Order.DoesNotExist:
             pass  # Optionally log this
 
@@ -60,39 +65,51 @@ class CreateOrderAPIView(APIView):
                 return Response({"message": "Appointment ID missing"}, status=status.HTTP_200_OK)
             
             try:
-                appointment = AppointmentAvailability.objects.get(id=appointment_id)
-            except AppointmentAvailability.DoesNotExist:
+                appointment = Appointment.objects.get(id=appointment_id)
+            except Appointment.DoesNotExist:
                 return Response({"message": "Appointment not found."}, status=status.HTTP_200_OK)
+
+            # Only allow the patient who owns the appointment to create the order
+            if appointment.patient != user:
+                return Response({"message": "You are not allowed to order for this appointment."}, status=status.HTTP_403_FORBIDDEN)
+
+            # Only allow orders for appointments with status 'booked'
+            if appointment.status != 'booked':
+                return Response({"message": f"Cannot order for appointment with status: {appointment.status}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Only allow orders for appointments in the future
+            if appointment.availability.start_time < timezone.now():
+                return Response({"message": "Cannot order for an appointment in the past."}, status=status.HTTP_400_BAD_REQUEST)
             
             if Order.objects.filter(appointment=appointment).exists():
                 return Response({"message": "Appointment already booked."}, status=status.HTTP_200_OK)
             
             amount = appointment.price
-            appointment_id = appointment.id
 
-            # Prepare order data
             order_data = {
                 'amount': amount,
                 'status': 'pending'
             }
 
-            # Serialize the order data
             serializer = OrderSerializer(data=order_data)
             
-            # Check if serializer is valid and save the order
             if serializer.is_valid():
                 order = serializer.save(user=user, appointment=appointment)
-                ChatRoom.objects.get_or_create(
-                    doctor=appointment.doctor,
-                    patient=user,
-                    appointment=appointment
-                )
+                # Safe ChatRoom creation
+                doctor = None
+                if hasattr(appointment, 'availability') and appointment.availability and hasattr(appointment.availability, 'doctor'):
+                    doctor = appointment.availability.doctor
+                if doctor:
+                    ChatRoom.objects.get_or_create(
+                        doctor=doctor,
+                        patient=user,
+                        appointment=appointment
+                    )
                 return Response({
                     "message": "Order created successfully.",
                     "orderId": order.id,
                     "status": order.status
                 }, status=status.HTTP_201_CREATED)
-            
             else:
                 return Response({
                     "message": "Order creation failed.",
@@ -100,6 +117,8 @@ class CreateOrderAPIView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
+            import traceback
+            print('Order creation error:', traceback.format_exc())
             return Response({"message": "Error while creating the order.", "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class CreateStripeCheckoutSession(APIView):
@@ -152,7 +171,7 @@ class OrderListAPIView(APIView):
         user = request.user
         try:
             if user.role == 'doctor': 
-                orders = Order.objects.filter(appointment_id__doctor=user)
+                orders = Order.objects.filter(appointment__availability__doctor=user)
             else:
                 orders = Order.objects.filter(user=user)
             if not orders.exists():
@@ -160,10 +179,6 @@ class OrderListAPIView(APIView):
                     {"message": "No orders found."},
                     status=status.HTTP_200_OK,
                 )
-            for order in orders:
-                appointment = AppointmentAvailability.objects.get(id=order.appointment.id)
-                order.appointment = appointment
-                
             serializer = OrderSerializer(orders, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
         

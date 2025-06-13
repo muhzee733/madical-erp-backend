@@ -278,11 +278,12 @@ class BookAppointmentView(generics.CreateAPIView):
         availability.is_booked = True
         availability.save()
 
-        # Save appointment and store for access in `create` (this is now handled by serializer)
+        # Save appointment with status 'pending'
         self.appointment = serializer.save(
             created_by=self.request.user,
             updated_by=self.request.user,
             is_deleted=False,
+            status='pending',  # Set status to 'pending' when booking
         )
 
         # Log appointment creation
@@ -309,6 +310,9 @@ class BookAppointmentView(generics.CreateAPIView):
             related_id=self.appointment.id
         )
 
+        # Schedule Celery task to expire appointment in 15 minutes
+        from .tasks import expire_pending_appointment
+        expire_pending_appointment.apply_async(args=[self.appointment.id], countdown=15*60)
 
 class UpdateAppointmentView(generics.UpdateAPIView):
     queryset = Appointment.objects.all()

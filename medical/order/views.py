@@ -45,6 +45,10 @@ def stripe_webhook(request):
             order.status = 'paid'
             order.payment_intent = payment_intent
             order.save()
+            # Set appointment status to 'booked' when payment is successful
+            appointment = order.appointment
+            appointment.status = 'booked'
+            appointment.save()
         except Order.DoesNotExist:
             pass  # Optionally log this
 

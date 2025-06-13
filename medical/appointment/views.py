@@ -312,7 +312,7 @@ class BookAppointmentView(generics.CreateAPIView):
 
         # Schedule Celery task to expire appointment in 15 minutes
         from .tasks import expire_pending_appointment
-        expire_pending_appointment.apply_async(args=[self.appointment.id], countdown=1*60)
+        expire_pending_appointment.apply_async(args=[self.appointment.id], countdown=15*60)
 
 class UpdateAppointmentView(generics.UpdateAPIView):
     queryset = Appointment.objects.all()

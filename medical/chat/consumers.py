@@ -6,8 +6,15 @@ from .models import ChatRoom, Message
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        # Check if user is authenticated
+        user = self.scope.get('user')
+        if not user or user.is_anonymous:
+            await self.close(code=4001)
+            return
+            
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = f'chat_{self.room_name}'
+        self.user = user
 
         await self.channel_layer.group_add(
             self.room_group_name,

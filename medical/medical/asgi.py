@@ -7,14 +7,14 @@ django.setup()
 load_dotenv()
 
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
+from chat.middleware import JWTAuthMiddlewareStack
 import chat.routing
 
 from django.core.asgi import get_asgi_application
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": AuthMiddlewareStack(
+    "websocket": JWTAuthMiddlewareStack(
         URLRouter(
             chat.routing.websocket_urlpatterns
         )

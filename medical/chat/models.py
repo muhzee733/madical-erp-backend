@@ -17,8 +17,37 @@ class Message(models.Model):
     room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.CASCADE)
     message = models.TextField()
-    read = models.BooleanField(default=False)
+    read = models.BooleanField(default=False)  # Keep for backward compatibility
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['timestamp']
 
     def __str__(self):
         return f"{self.sender.first_name}: {self.message[:20]}"
+    
+    def is_read_by(self, user):
+        """Check if message has been read by specific user"""
+        return MessageReadStatus.objects.filter(message=self, user=user).exists()
+    
+    def mark_as_read_by(self, user):
+        """Mark message as read by specific user"""
+        if user != self.sender:  # Don't mark own messages as "read"
+            MessageReadStatus.objects.get_or_create(message=self, user=user)
+    
+    def get_read_by_users(self):
+        """Get list of users who have read this message"""
+        return User.objects.filter(read_messages__message=self)
+
+
+class MessageReadStatus(models.Model):
+    """Track which users have read which messages"""
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='read_by')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='read_messages')
+    read_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('message', 'user')
+    
+    def __str__(self):
+        return f"{self.user.first_name} read: {self.message.message[:20]}"

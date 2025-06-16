@@ -12,8 +12,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4001)
             return
             
-        self.room_name = self.scope['url_route']['kwargs']['room_name']
-        self.room_group_name = f'chat_{self.room_name}'
+        self.room_id = self.scope['url_route']['kwargs']['room_id']
+        self.room_group_name = f'chat_{self.room_id}'
         self.user = user
 
         await self.channel_layer.group_add(
@@ -34,7 +34,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         sender_id = data.get('sender')
 
         # Save to DB
-        await self.save_message(self.room_name, sender_id, message)
+        await self.save_message(self.room_id, sender_id, message)
 
         await self.channel_layer.group_send(
             self.room_group_name,

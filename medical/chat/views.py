@@ -6,10 +6,11 @@ from django.db.models import Q, Count
 from .models import Message, ChatRoom, MessageReadStatus
 from .serializers import MessageSerializer, ChatRoomSerializer
 from users.permissions import IsDoctor, IsPatient
+from .permissions import HasChatRoomAccess, CanCreateChatRoom, CanModifyMessage
 
 
 class ChatRoomListCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+    permission_classes = [IsAuthenticated, CanCreateChatRoom]
 
     def get(self, request):
         user = request.user
@@ -19,19 +20,90 @@ class ChatRoomListCreateView(APIView):
             rooms = ChatRoom.objects.filter(patient=user)
         else:
             return Response({"detail": "Unauthorized user type."}, status=status.HTTP_403_FORBIDDEN)
-        serializer = ChatRoomSerializer(rooms, many=True)
+        serializer = ChatRoomSerializer(rooms, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        serializer = ChatRoomSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        data = request.data
+        
+        # Validate required fields
+        if not all(key in data for key in ['patient', 'doctor', 'appointment']):
+            return Response(
+                {"detail": "patient, doctor, and appointment are required fields."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the appointment and validate it exists
+            from appointment.models import Appointment
+            appointment = Appointment.objects.get(id=data['appointment'])
+            
+            # Validate that the appointment belongs to the specified patient and doctor
+            if (appointment.patient.id != data['patient'] or 
+                appointment.availability.doctor.id != data['doctor']):
+                return Response(
+                    {"detail": "Appointment does not match the specified patient and doctor."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Role-based creation validation
+            if user.role == 'patient':
+                # Patients can only create rooms for their own appointments
+                if appointment.patient.id != user.id:
+                    return Response(
+                        {"detail": "Patients can only create chat rooms for their own appointments."}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            elif user.role == 'doctor':
+                # Doctors can only create rooms for appointments they're assigned to
+                if appointment.availability.doctor.id != user.id:
+                    return Response(
+                        {"detail": "Doctors can only create chat rooms for their own appointments."}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            elif user.role == 'admin':
+                # Admins can create any room (no additional validation needed)
+                pass
+            else:
+                return Response(
+                    {"detail": "Unauthorized user role for room creation."}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if room already exists for this appointment
+            existing_room = ChatRoom.objects.filter(appointment=appointment).first()
+            if existing_room:
+                return Response(
+                    {
+                        "detail": "Chat room already exists for this appointment.",
+                        "existing_room_id": existing_room.id
+                    }, 
+                    status=status.HTTP_409_CONFLICT
+                )
+            
+            # Create the room
+            serializer = ChatRoomSerializer(data=data, context={'request': request})
+            if serializer.is_valid():
+                room = serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Appointment.DoesNotExist:
+            return Response(
+                {"detail": "Appointment not found."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Error creating room: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class MessageListCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+    permission_classes = [IsAuthenticated, HasChatRoomAccess]
 
     def get(self, request, room_id):
         # Validate room access
@@ -66,7 +138,7 @@ class MessageListCreateView(APIView):
 
 class MarkMessageAsReadView(APIView):
     """Mark a specific message as read by the current user"""
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+    permission_classes = [IsAuthenticated, CanModifyMessage]
 
     def post(self, request, message_id):
         try:
@@ -92,7 +164,7 @@ class MarkMessageAsReadView(APIView):
 
 class MarkRoomMessagesAsReadView(APIView):
     """Mark all messages in a room as read by the current user"""
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+    permission_classes = [IsAuthenticated, HasChatRoomAccess]
 
     def post(self, request, room_id):
         try:
@@ -130,7 +202,7 @@ class MarkRoomMessagesAsReadView(APIView):
 
 class UnreadCountView(APIView):
     """Get unread message count for current user"""
-    permission_classes = [IsAuthenticated, IsDoctor | IsPatient]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user

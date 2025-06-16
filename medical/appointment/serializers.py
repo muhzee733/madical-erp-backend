@@ -59,7 +59,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'created_by',
             'updated_by',
             'is_deleted',
-	    'price',
+            'price',
             'is_initial',
         ]
 

@@ -14,12 +14,27 @@ class ChatRoomListCreateView(APIView):
 
     def get(self, request):
         user = request.user
+        include_deleted = request.query_params.get('include_deleted', 'false').lower() == 'true'
+        
+        # Base queryset
         if user.role == 'doctor':
             rooms = ChatRoom.objects.filter(doctor=user)
         elif user.role == 'patient':
             rooms = ChatRoom.objects.filter(patient=user)
+        elif user.role == 'admin':
+            rooms = ChatRoom.objects.all()
         else:
             return Response({"detail": "Unauthorized user type."}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Filter out deleted rooms unless specifically requested
+        if not include_deleted:
+            rooms = rooms.filter(is_deleted=False)
+        
+        # Optional status filtering
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            rooms = rooms.filter(status=status_filter)
+        
         serializer = ChatRoomSerializer(rooms, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -244,3 +259,155 @@ class UnreadCountView(APIView):
             "total_unread": unread_count,
             "rooms": room_counts
         }, status=status.HTTP_200_OK)
+
+
+class RoomManagementView(APIView):
+    """Manage room status (activate, deactivate, archive, delete)"""
+    permission_classes = [IsAuthenticated, HasChatRoomAccess]
+
+    def patch(self, request, room_id):
+        """Update room status"""
+        try:
+            room = ChatRoom.objects.get(id=room_id)
+            user = request.user
+            
+            # Validate room access
+            if user.id != room.patient.id and user.id != room.doctor.id and user.role != 'admin':
+                return Response({"detail": "Access denied to this room."}, status=status.HTTP_403_FORBIDDEN)
+            
+            action = request.data.get('action')
+            if not action:
+                return Response({"detail": "Action is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Only doctors and admins can manage room status
+            if user.role not in ['doctor', 'admin']:
+                return Response(
+                    {"detail": "Only doctors and admins can manage room status."}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            if action == 'activate':
+                if room.is_deleted:
+                    return Response(
+                        {"detail": "Cannot activate deleted room."}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                room.status = 'active'
+                room.save()
+                message = "Room activated successfully."
+                
+            elif action == 'deactivate':
+                room.deactivate()
+                message = "Room deactivated successfully."
+                
+            elif action == 'archive':
+                room.archive()
+                message = "Room archived successfully."
+                
+            elif action == 'suspend':
+                room.status = 'suspended'
+                room.save()
+                message = "Room suspended successfully."
+                
+            elif action == 'delete':
+                # Only admins can delete rooms
+                if user.role != 'admin':
+                    return Response(
+                        {"detail": "Only admins can delete rooms."}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                room.soft_delete()
+                message = "Room deleted successfully."
+                
+            else:
+                return Response(
+                    {"detail": "Invalid action. Valid actions: activate, deactivate, archive, suspend, delete"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            return Response({
+                "message": message,
+                "room_id": room_id,
+                "new_status": room.status,
+                "is_deleted": room.is_deleted
+            }, status=status.HTTP_200_OK)
+            
+        except ChatRoom.DoesNotExist:
+            return Response({"detail": "Room not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RoomValidationView(APIView):
+    """Validate room eligibility for an appointment"""
+    permission_classes = [IsAuthenticated, CanCreateChatRoom]
+
+    def post(self, request):
+        """Check if a chat room can be created for an appointment"""
+        appointment_id = request.data.get('appointment_id')
+        if not appointment_id:
+            return Response(
+                {"detail": "appointment_id is required."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from appointment.models import Appointment
+            appointment = Appointment.objects.get(id=appointment_id)
+            user = request.user
+            
+            # Validate user has access to this appointment
+            if user.role == 'patient' and appointment.patient.id != user.id:
+                return Response(
+                    {"detail": "Access denied to this appointment."}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            elif user.role == 'doctor' and appointment.availability.doctor.id != user.id:
+                return Response(
+                    {"detail": "Access denied to this appointment."}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check appointment status
+            valid_statuses = ['booked', 'completed', 'rescheduled']
+            if appointment.status not in valid_statuses:
+                return Response({
+                    "can_create": False,
+                    "reason": f"Cannot create chat room for appointment with status: {appointment.status}",
+                    "valid_statuses": valid_statuses
+                }, status=status.HTTP_200_OK)
+            
+            # Check if room already exists
+            existing_room = ChatRoom.objects.filter(appointment=appointment).first()
+            if existing_room:
+                return Response({
+                    "can_create": False,
+                    "reason": "Chat room already exists for this appointment",
+                    "existing_room": {
+                        "id": existing_room.id,
+                        "status": existing_room.status,
+                        "is_deleted": existing_room.is_deleted
+                    }
+                }, status=status.HTTP_200_OK)
+            
+            # All checks passed
+            return Response({
+                "can_create": True,
+                "appointment": {
+                    "id": appointment.id,
+                    "patient": {
+                        "id": appointment.patient.id,
+                        "name": appointment.patient.get_full_name()
+                    },
+                    "doctor": {
+                        "id": appointment.availability.doctor.id,
+                        "name": appointment.availability.doctor.get_full_name()
+                    },
+                    "start_time": appointment.availability.start_time,
+                    "status": appointment.status
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Appointment.DoesNotExist:
+            return Response(
+                {"detail": "Appointment not found."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )

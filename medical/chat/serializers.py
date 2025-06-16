@@ -32,8 +32,11 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChatRoom
-        fields = ['id', 'patient', 'doctor', 'appointment', 'created_at', 'status', 
-                  'patient_name', 'doctor_name', 'appointment_details', 'unread_count']
+        fields = ['id', 'patient', 'doctor', 'appointment', 'created_at', 'updated_at', 
+                  'status', 'is_deleted', 'deleted_at', 'patient_name', 'doctor_name', 
+                  'appointment_details', 'unread_count']
+        read_only_fields = ['created_at', 'updated_at', 'deleted_at', 'patient_name', 
+                           'doctor_name', 'appointment_details', 'unread_count']
         
     def get_appointment_details(self, obj):
         """Get basic appointment information"""

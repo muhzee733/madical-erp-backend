@@ -16,10 +16,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_group_name = f'chat_{self.room_id}'
         self.user = user
 
-        # Validate room access
-        has_access = await self.validate_room_access(user, self.room_id)
-        if not has_access:
+        # Validate room access and status
+        room_validation = await self.validate_room_access_and_status(user, self.room_id)
+        if not room_validation['has_access']:
             await self.close(code=4003)  # Forbidden
+            return
+        
+        if not room_validation['can_message']:
+            await self.close(code=4004)  # Room inactive
             return
 
         await self.channel_layer.group_add(
@@ -100,19 +104,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
 
     @database_sync_to_async
-    def validate_room_access(self, user, room_id):
+    def validate_room_access_and_status(self, user, room_id):
         """
-        Validate if user has access to the chat room.
-        Only the patient and doctor assigned to the room can access it.
+        Validate if user has access to the chat room and if room allows messaging.
         """
         try:
             room = ChatRoom.objects.get(id=room_id)
-            return user.id == room.patient.id or user.id == room.doctor.id
+            
+            # Check access
+            has_access = user.id == room.patient.id or user.id == room.doctor.id
+            
+            # Check if room allows messaging
+            can_message = room.can_send_messages()
+            
+            return {
+                'has_access': has_access,
+                'can_message': can_message,
+                'room_status': room.status,
+                'is_deleted': room.is_deleted
+            }
+            
         except ChatRoom.DoesNotExist:
-            return False
+            return {
+                'has_access': False,
+                'can_message': False,
+                'room_status': None,
+                'is_deleted': None
+            }
         except Exception as e:
             print(f"[Error validating room access]: {str(e)}")
-            return False
+            return {
+                'has_access': False,
+                'can_message': False,
+                'room_status': None,
+                'is_deleted': None
+            }
 
     @database_sync_to_async
     def save_message(self, room_id, sender_id, message):

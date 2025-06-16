@@ -6,15 +6,18 @@ from appointment.models import Appointment, AppointmentAvailability
 from .models import Order
 from datetime import timedelta
 from django.utils import timezone
+from django.utils.timezone import now
 
 class OrderFlowTests(APITestCase):
     def setUp(self):
         self.doctor = User.objects.create_user(email='doc@example.com', password='testpass', role='doctor')
         self.patient = User.objects.create_user(email='pat@example.com', password='testpass', role='patient')
+        future_start = now() + timedelta(days=1)
+        future_end = future_start + timedelta(minutes=15)
         self.availability = AppointmentAvailability.objects.create(
             doctor=self.doctor,
-            start_time='2025-06-12T10:00:00Z',
-            end_time='2025-06-12T10:15:00Z',
+            start_time=future_start,
+            end_time=future_end,
             slot_type='short',
             timezone='Australia/Brisbane',
             is_booked=False

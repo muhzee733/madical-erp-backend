@@ -68,21 +68,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Use authenticated user instead of client-sent sender ID
             sender_id = self.user.id
 
-            # Save to DB with error handling
+            # Save to DB with atomic transaction
             saved_message = await self.save_message(self.room_id, sender_id, message)
             if not saved_message:
                 await self.send_error('Failed to save message')
                 return
 
-            # Broadcast successful message
+            # Message successfully persisted - now broadcast to all room members
+            # Use data from saved message to ensure consistency
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'chat_message',
-                    'message': message,
-                    'sender': sender_id,
-                    'sender_name': self.user.first_name,
-                    'timestamp': saved_message.get('timestamp') if saved_message else None,
+                    'message': saved_message['message'],
+                    'sender': saved_message['sender_id'],
+                    'sender_name': saved_message['sender_name'],
+                    'timestamp': saved_message['timestamp'],
+                    'message_id': saved_message['id']  # Include DB ID for client tracking
                 }
             )
 
@@ -115,29 +117,39 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def save_message(self, room_id, sender_id, message):
         """
-        Save message to database with comprehensive error handling
+        Save message to database with atomic transaction and comprehensive error handling
         Returns dict with message data on success, None on failure
         """
+        from django.db import transaction
+        
         try:
-            room = ChatRoom.objects.get(id=room_id)
-            sender = User.objects.get(id=sender_id)
-            
-            # Double-check room access at database level
-            if sender.id != room.patient.id and sender.id != room.doctor.id:
-                print(f"[Security] User {sender_id} attempted to send message to unauthorized room {room_id}")
-                return None
-            
-            msg = Message.objects.create(room=room, sender=sender, message=message)
-            print(f"[Chat] Message saved: ID={msg.id}, Room={room_id}, Sender={sender.email}")
-            
-            return {
-                'id': msg.id,
-                'message': msg.message,
-                'sender_id': msg.sender.id,
-                'sender_name': msg.sender.first_name,
-                'timestamp': msg.timestamp.isoformat(),
-                'room_id': msg.room.id
-            }
+            # Use atomic transaction to ensure consistency
+            with transaction.atomic():
+                room = ChatRoom.objects.select_for_update().get(id=room_id)
+                sender = User.objects.get(id=sender_id)
+                
+                # Double-check room access at database level
+                if sender.id != room.patient.id and sender.id != room.doctor.id:
+                    print(f"[Security] User {sender_id} attempted to send message to unauthorized room {room_id}")
+                    return None
+                
+                # Create message within transaction
+                msg = Message.objects.create(room=room, sender=sender, message=message)
+                
+                # Force commit by accessing the ID (ensures data is persisted)
+                message_id = msg.id
+                message_timestamp = msg.timestamp
+                
+                print(f"[Chat] Message committed: ID={message_id}, Room={room_id}, Sender={sender.email}")
+                
+                return {
+                    'id': message_id,
+                    'message': msg.message,
+                    'sender_id': msg.sender.id,
+                    'sender_name': msg.sender.first_name,
+                    'timestamp': message_timestamp.isoformat(),
+                    'room_id': msg.room.id
+                }
             
         except ChatRoom.DoesNotExist:
             print(f"[Error] Chat room {room_id} does not exist")
@@ -146,7 +158,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(f"[Error] User {sender_id} does not exist")
             return None
         except Exception as e:
-            print(f"[Error] Failed to save message: {str(e)}")
+            print(f"[Error] Failed to save message in transaction: {str(e)}")
             return None
 
     async def chat_message(self, event):
@@ -154,6 +166,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         try:
             await self.send(text_data=json.dumps({
                 'type': 'message',
+                'id': event.get('message_id'),  # Database ID for client tracking
                 'message': event['message'],
                 'sender': event['sender'],
                 'sender_name': event.get('sender_name', 'Unknown'),

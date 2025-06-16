@@ -29,37 +29,73 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        """Handle WebSocket disconnection"""
+        try:
+            if hasattr(self, 'room_group_name'):
+                await self.channel_layer.group_discard(
+                    self.room_group_name,
+                    self.channel_name
+                )
+                print(f"[Chat] User {getattr(self.user, 'email', 'Unknown')} disconnected from room {getattr(self, 'room_id', 'Unknown')}")
+        except Exception as e:
+            print(f"[WebSocket Error] Error during disconnect: {str(e)}")
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        message = data.get('message', '').strip()
-        
-        if not message:
-            # Send error for empty message
-            await self.send(text_data=json.dumps({
-                'error': 'Message cannot be empty'
-            }))
-            return
+        try:
+            # Parse JSON data
+            try:
+                data = json.loads(text_data)
+            except json.JSONDecodeError:
+                await self.send_error('Invalid JSON format')
+                return
 
-        # Use authenticated user instead of client-sent sender ID
-        sender_id = self.user.id
+            # Validate data structure
+            if not isinstance(data, dict):
+                await self.send_error('Message data must be an object')
+                return
 
-        # Save to DB
-        await self.save_message(self.room_id, sender_id, message)
+            # Extract and validate message
+            message = data.get('message', '').strip()
+            if not message:
+                await self.send_error('Message cannot be empty')
+                return
 
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'chat_message',
-                'message': message,
-                'sender': sender_id,
-                'sender_name': self.user.first_name,
-            }
-        )
+            # Validate message length (optional: prevent spam)
+            if len(message) > 1000:  # Max 1000 characters
+                await self.send_error('Message too long (max 1000 characters)')
+                return
+
+            # Use authenticated user instead of client-sent sender ID
+            sender_id = self.user.id
+
+            # Save to DB with error handling
+            saved_message = await self.save_message(self.room_id, sender_id, message)
+            if not saved_message:
+                await self.send_error('Failed to save message')
+                return
+
+            # Broadcast successful message
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'chat_message',
+                    'message': message,
+                    'sender': sender_id,
+                    'sender_name': self.user.first_name,
+                    'timestamp': saved_message.get('timestamp') if saved_message else None,
+                }
+            )
+
+        except Exception as e:
+            print(f"[WebSocket Error] Unexpected error in receive: {str(e)}")
+            await self.send_error('An unexpected error occurred')
+
+    async def send_error(self, error_message):
+        """Send error message to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'error',
+            'error': error_message
+        }))
 
     @database_sync_to_async
     def validate_room_access(self, user, room_id):
@@ -78,20 +114,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, room_id, sender_id, message):
-        
+        """
+        Save message to database with comprehensive error handling
+        Returns dict with message data on success, None on failure
+        """
         try:
-            print(f"Saving message: room={room_id}, sender={sender_id}, msg={message}")
             room = ChatRoom.objects.get(id=room_id)
             sender = User.objects.get(id=sender_id)
+            
+            # Double-check room access at database level
+            if sender.id != room.patient.id and sender.id != room.doctor.id:
+                print(f"[Security] User {sender_id} attempted to send message to unauthorized room {room_id}")
+                return None
+            
             msg = Message.objects.create(room=room, sender=sender, message=message)
-            print("Message saved:", msg.id)
-            return msg 
+            print(f"[Chat] Message saved: ID={msg.id}, Room={room_id}, Sender={sender.email}")
+            
+            return {
+                'id': msg.id,
+                'message': msg.message,
+                'sender_id': msg.sender.id,
+                'sender_name': msg.sender.first_name,
+                'timestamp': msg.timestamp.isoformat(),
+                'room_id': msg.room.id
+            }
+            
+        except ChatRoom.DoesNotExist:
+            print(f"[Error] Chat room {room_id} does not exist")
+            return None
+        except User.DoesNotExist:
+            print(f"[Error] User {sender_id} does not exist")
+            return None
         except Exception as e:
-            print("[Error Saving]", str(e))
+            print(f"[Error] Failed to save message: {str(e)}")
+            return None
 
     async def chat_message(self, event):
-        await self.send(text_data=json.dumps({
-            'message': event['message'],
-            'sender': event['sender'],
-            'sender_name': event.get('sender_name', 'Unknown')
-        }))
+        """Send chat message to WebSocket client"""
+        try:
+            await self.send(text_data=json.dumps({
+                'type': 'message',
+                'message': event['message'],
+                'sender': event['sender'],
+                'sender_name': event.get('sender_name', 'Unknown'),
+                'timestamp': event.get('timestamp')
+            }))
+        except Exception as e:
+            print(f"[WebSocket Error] Failed to send message: {str(e)}")

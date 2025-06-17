@@ -7,6 +7,7 @@ from jwt import decode as jwt_decode
 from django.conf import settings
 from channels.middleware import BaseMiddleware
 from channels.auth import AuthMiddlewareStack
+from channels.db import database_sync_to_async
 import urllib.parse
 
 User = get_user_model()
@@ -37,20 +38,22 @@ class JWTAuthMiddleware(BaseMiddleware):
                     scope['user'] = user
                 else:
                     scope['user'] = AnonymousUser()
-            except (InvalidToken, TokenError, Exception):
+            except Exception:
                 scope['user'] = AnonymousUser()
         else:
             scope['user'] = AnonymousUser()
         
         return await super().__call__(scope, receive, send)
     
-    @staticmethod
-    async def get_user(user_id):
+    @database_sync_to_async  
+    def get_user(self, user_id):
         try:
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            return await User.objects.aget(id=user_id)
+            return User.objects.get(id=user_id)
         except User.DoesNotExist:
+            return AnonymousUser()
+        except Exception:
             return AnonymousUser()
 
 def JWTAuthMiddlewareStack(inner):

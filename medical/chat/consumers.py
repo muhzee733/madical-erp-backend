@@ -1,36 +1,45 @@
 import json
+import urllib.parse
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.tokens import UntypedToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from jwt import decode as jwt_decode
+from django.conf import settings
 from users.models import User
 from .models import ChatRoom, Message
 
+User = get_user_model()
+
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # Check if user is authenticated
-        user = self.scope.get('user')
-        if not user or user.is_anonymous:
-            await self.close(code=4001)
+        # Step 1: Validate JWT token
+        user = await self.simple_jwt_auth()
+        if not user:
+            await self.close(code=4001)  # Authentication failed
             return
             
         self.room_id = self.scope['url_route']['kwargs']['room_id']
         self.room_group_name = f'chat_{self.room_id}'
         self.user = user
 
-        # Validate room access and status
-        room_validation = await self.validate_room_access_and_status(user, self.room_id)
-        if not room_validation['has_access']:
-            await self.close(code=4003)  # Forbidden
-            return
+        # Step 2: Accept connection immediately
+        await self.accept()
         
-        if not room_validation['can_message']:
-            await self.close(code=4004)  # Room inactive
-            return
-
+        # Step 3: Send welcome message
+        await self.send(text_data=json.dumps({
+            'type': 'welcome',
+            'message': f'Welcome to chat room {self.room_id}!',
+            'user': user.email
+        }))
+        
+        # Step 4: Add to group
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
-        await self.accept()
 
     async def disconnect(self, close_code):
         """Handle WebSocket disconnection"""
@@ -40,7 +49,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     self.room_group_name,
                     self.channel_name
                 )
-                print(f"[Chat] User {getattr(self.user, 'email', 'Unknown')} disconnected from room {getattr(self, 'room_id', 'Unknown')}")
+                user_email = getattr(getattr(self, 'user', None), 'email', 'Unknown')
+                room_id = getattr(self, 'room_id', 'Unknown')
+                print(f"[Chat] User {user_email} disconnected from room {room_id}")
         except Exception as e:
             print(f"[WebSocket Error] Error during disconnect: {str(e)}")
 
@@ -70,25 +81,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
 
             # Use authenticated user instead of client-sent sender ID
-            sender_id = self.user.id
-
-            # Save to DB with atomic transaction
-            saved_message = await self.save_message(self.room_id, sender_id, message)
-            if not saved_message:
-                await self.send_error('Failed to save message')
+            sender_id = getattr(self, 'user', None)
+            if not sender_id:
+                await self.send_error('User not authenticated')
                 return
+            sender_id = sender_id.id
 
-            # Message successfully persisted - now broadcast to all room members
-            # Use data from saved message to ensure consistency
+            # Broadcast message to all room members immediately
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'chat_message',
-                    'message': saved_message['message'],
-                    'sender': saved_message['sender_id'],
-                    'sender_name': saved_message['sender_name'],
-                    'timestamp': saved_message['timestamp'],
-                    'message_id': saved_message['id']  # Include DB ID for client tracking
+                    'message': message,
+                    'sender': sender_id,
+                    'sender_name': getattr(self.user, 'first_name', 'User'),
+                    'timestamp': 'now'
                 }
             )
 
@@ -200,3 +207,80 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
         except Exception as e:
             print(f"[WebSocket Error] Failed to send message: {str(e)}")
+    
+    async def simple_jwt_auth(self):
+        """
+        Simple JWT authentication - no complex database async operations
+        """
+        try:
+            # Get token from query string
+            query_string = self.scope.get('query_string', b'').decode()
+            query_params = urllib.parse.parse_qs(query_string)
+            token = query_params.get('token', [None])[0]
+            
+            if not token:
+                return None
+            
+            # Validate and decode token
+            UntypedToken(token)
+            decoded_data = jwt_decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded_data.get('user_id')
+            
+            if not user_id:
+                return None
+            
+            # Get user synchronously (avoiding async issues)
+            user = await self.get_user_simple(user_id)
+            return user
+            
+        except Exception:
+            return None
+    
+    @database_sync_to_async
+    def get_user_simple(self, user_id):
+        """Simple synchronous user lookup"""
+        try:
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None
+    
+    async def authenticate_jwt(self):
+        """
+        Simple JWT authentication from query string
+        Returns User object if valid, None if invalid
+        """
+        try:
+            # Get token from query string
+            query_string = self.scope.get('query_string', b'').decode()
+            query_params = urllib.parse.parse_qs(query_string)
+            token = query_params.get('token', [None])[0]
+            
+            if not token:
+                return None
+            
+            # Validate token structure
+            UntypedToken(token)
+            
+            # Decode token
+            decoded_data = jwt_decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded_data.get('user_id')
+            
+            if not user_id:
+                return None
+            
+            # Get user from database
+            user = await self.get_user_by_id(user_id)
+            return user
+            
+        except (InvalidToken, TokenError):
+            return None
+        except Exception:
+            return None
+    
+    @database_sync_to_async
+    def get_user_by_id(self, user_id):
+        """Get user from database synchronously"""
+        try:
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None

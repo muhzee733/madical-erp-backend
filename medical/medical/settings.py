@@ -82,7 +82,7 @@ DATABASES = {
 	'NAME': 'Medical',
         'USER':  'admin',
         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
-	'HOST': 'database-2.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
+        'HOST': 'database-2.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
         'PORT': '3306'
     }
 }

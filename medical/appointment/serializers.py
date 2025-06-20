@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
 from django.utils.timezone import now
 from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
+from .constants import NEW_PATIENT_FEE, RETURNING_PATIENT_FEE, COMPLETED_APPOINTMENT_STATUSES
 
 class AppointmentAvailabilitySerializer(serializers.ModelSerializer):
     doctor = UserSerializer(read_only=True)
@@ -25,11 +26,6 @@ class AppointmentSerializer(serializers.ModelSerializer):
         source='availability',
         write_only=True
     )
-    reason_type = serializers.ChoiceField(
-        choices=[("initial", "Initial"), ("followup", "Follow-up")],
-        write_only=True,
-        required=False  # optional; fallback to automatic logic if not provided
-    )
 
 
     class Meta:
@@ -49,7 +45,6 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'created_by',
             'updated_by',
             'is_deleted',
-            'reason_type',
         ]
         read_only_fields = [
             'id',
@@ -67,26 +62,26 @@ class AppointmentSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         validated_data['patient'] = user
 
-        # Extract reason_type and remove from validated_data
-        reason_type = validated_data.pop("reason_type", None)
-
-        # Check if patient has booked before
+        # New billing logic: Check if patient has any previous appointments
+        # Automatically determine pricing based on patient history
         has_prior_appointments = Appointment.objects.filter(
             patient=user,
-            status__in=["booked", "completed"]
+            status__in=COMPLETED_APPOINTMENT_STATUSES
         ).exists()
 
-        # Only allow follow-up if patient has prior appointments
-        if has_prior_appointments and reason_type == "followup":
+        # Set pricing based on patient history (not appointment type)
+        if has_prior_appointments:
+            # Returning patient: $50 flat fee regardless of appointment type
             validated_data['is_initial'] = False
-            validated_data['price'] = 50.00
+            validated_data['price'] = RETURNING_PATIENT_FEE
         else:
+            # New patient: $80 flat fee for first-ever appointment
             validated_data['is_initial'] = True
-            validated_data['price'] = 80.00
+            validated_data['price'] = NEW_PATIENT_FEE
 
         # Optional fields
         request = self.context.get('request')
-        if request:
+        if request and hasattr(request, 'data'):
             validated_data['extended_info'] = request.data.get('extended_info')
             validated_data['note'] = request.data.get('note')
 

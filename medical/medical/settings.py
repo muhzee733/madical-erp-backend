@@ -79,10 +79,10 @@ CHANNEL_LAYERS = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-	'NAME': 'Medical',
+	'NAME': 'ProMedicine',
         'USER':  'admin',
         'PASSWORD': 'EKFY484Z2OmnXA2CKilc',
-	'HOST': 'database-2.c502o6q2ecjb.eu-north-1.rds.amazonaws.com',
+        'HOST': 'promedicinedb-demo.cnam8g4aq8en.ap-southeast-2.rds.amazonaws.com',
         'PORT': '3306'
     }
 }
@@ -118,7 +118,7 @@ AUTH_USER_MODEL = 'users.User'
 CORS_ALLOWED_ORIGINS = [
     "https://promedicine.geeklies.xyz",
     "http://localhost:3000",
-    "http://dashboard.promedicine.com.au",
+    "https://dashboard.promedicine.com.au",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -162,3 +162,12 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "your_email@gmail.com"
 EMAIL_HOST_PASSWORD = "your_app_password"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+# Celery settings
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+# CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'

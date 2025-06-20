@@ -1,10 +1,11 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
-from django.utils.timezone import now, timedelta
+from django.utils.timezone import now, timedelta, make_aware
 from users.models import DoctorProfile, PatientProfile, User
 from appointment.models import AppointmentActionLog, AppointmentAvailability, Appointment
 from django.urls import reverse
 from datetime import datetime
+
 from zoneinfo import ZoneInfo
 import pytz
 import uuid
@@ -112,14 +113,19 @@ class AvailabilityFullTestSuite(APITestCase):
 
     def test_doctor_can_create_multiple_custom_slots(self):
         self.client.force_authenticate(user=self.doctor)
+        
+        # Use a future date that's timezone-aware
+        future_date = (now() + timedelta(days=2)).date()
+        date_str = future_date.strftime("%Y-%m-%d")
+        
         response = self.client.post(reverse('custom-availability'), {
-            "date": "2025-06-12",
+            "date": date_str,
             "start_times": ["09:00", "10:15", "11:30", "14:15"],
             "slot_type": "short"
         }, format='json')
 
         tz = ZoneInfo("Australia/Brisbane")
-        target_date = datetime(2025, 6, 12).date()
+        target_date = future_date
 
         # Convert start_time to local before date filtering
         slots = AppointmentAvailability.objects.filter(
@@ -133,8 +139,13 @@ class AvailabilityFullTestSuite(APITestCase):
 
     def test_invalid_time_format_fails(self):
         self.client.force_authenticate(user=self.doctor)
+        
+        # Use a future date that's timezone-aware
+        future_date = (now() + timedelta(days=2)).date()
+        date_str = future_date.strftime("%Y-%m-%d")
+        
         response = self.client.post(reverse('custom-availability'), {
-            "date": "2025-06-12",
+            "date": date_str,
             "start_times": ["09:00", "bad-time"],
             "slot_type": "short"
         }, format='json')
@@ -143,8 +154,13 @@ class AvailabilityFullTestSuite(APITestCase):
 
     def test_invalid_slot_type_fails(self):
         self.client.force_authenticate(user=self.doctor)
+        
+        # Use a future date that's timezone-aware
+        future_date = (now() + timedelta(days=2)).date()
+        date_str = future_date.strftime("%Y-%m-%d")
+        
         response = self.client.post(reverse('custom-availability'), {
-            "date": "2025-06-12",
+            "date": date_str,
             "start_times": ["09:00", "10:00"],
             "slot_type": "ultra"
         }, format='json')
@@ -154,12 +170,19 @@ class AvailabilityFullTestSuite(APITestCase):
     def test_detect_overlap_with_existing_slot(self):
         self.client.force_authenticate(user=self.doctor)
 
+        # Use timezone-aware future datetime
+        future_datetime = now() + timedelta(days=2)
+        start_time = future_datetime.astimezone(self.tz).replace(hour=9, minute=0, second=0, microsecond=0)
+        end_time = start_time + timedelta(minutes=15)
+        
         self.create_availability(self.doctor,
-            start=self.tz.localize(datetime(2025, 6, 12, 9, 0)),
-            end=self.tz.localize(datetime(2025, 6, 12, 9, 15)))
+            start=start_time,
+            end=end_time)
 
+        # Use the same date for the API call
+        date_str = start_time.date().strftime("%Y-%m-%d")
         response = self.client.post(reverse('custom-availability'), {
-            "date": "2025-06-12",
+            "date": date_str,
             "start_times": ["09:00", "10:15"],
             "slot_type": "short"
         }, format='json')
@@ -168,8 +191,13 @@ class AvailabilityFullTestSuite(APITestCase):
 
     def test_detect_overlap_within_payload(self):
         self.client.force_authenticate(user=self.doctor)
+        
+        # Use a future date that's timezone-aware
+        future_date = (now() + timedelta(days=2)).date()
+        date_str = future_date.strftime("%Y-%m-%d")
+        
         response = self.client.post(reverse('custom-availability'), {
-            "date": "2025-06-12",
+            "date": date_str,
             "start_times": ["09:00", "09:10"],  # will overlap if short (15 min)
             "slot_type": "short"
         }, format='json')
@@ -178,8 +206,13 @@ class AvailabilityFullTestSuite(APITestCase):
 
     def test_patient_cannot_create_custom_slots(self):
         self.client.force_authenticate(user=self.patient)
+        
+        # Use a future date that's timezone-aware
+        future_date = (now() + timedelta(days=2)).date()
+        date_str = future_date.strftime("%Y-%m-%d")
+        
         response = self.client.post(reverse('custom-availability'), {
-            "date": "2025-06-12",
+            "date": date_str,
             "start_times": ["09:00"],
             "slot_type": "short"
         }, format='json')
@@ -368,7 +401,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
             is_superuser=True
         )
 
-        self.future_start = now().replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        self.future_start = now().astimezone(self.tz).replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
         self.future_end = self.future_start + timedelta(minutes=15)
 
         self.availability = AppointmentAvailability.objects.create(
@@ -461,7 +494,7 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         self.client.post(reverse('book-appointment'), {
             "availability_id": str(self.availability.id)
         }, format='json')
-
+        Appointment.objects.filter(patient=self.patient).update(status="booked")
         # Book follow-up
         followup_slot = AppointmentAvailability.objects.create(
             doctor=self.doctor,
@@ -491,6 +524,11 @@ class AppointmentBookingAndCancellationTests(APITestCase):
         self.assertEqual(response1.status_code, 201)
         self.assertEqual(response1.data["price"], "80.00")
         self.assertTrue(response1.data["is_initial"])
+
+        # Update the first appointment status to 'booked' so it counts as a prior appointment
+        first_appointment = Appointment.objects.get(patient=self.patient)
+        first_appointment.status = 'booked'
+        first_appointment.save()
 
         # Create a second available slot for follow-up
         followup_start = self.future_end + timedelta(minutes=15)

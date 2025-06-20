@@ -238,9 +238,24 @@ class ListMyAvailabilityView(generics.ListAPIView):
         is_booked = self.request.query_params.get('is_booked')
 
         if start_time:
-            queryset = queryset.filter(start_time__gte=start_time)
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone
+            
+            # Parse the datetime string and make it timezone-aware if it's not already
+            parsed_start = parse_datetime(start_time)
+            if parsed_start and timezone.is_naive(parsed_start):
+                parsed_start = timezone.make_aware(parsed_start)
+            queryset = queryset.filter(start_time__gte=parsed_start or start_time)
+            
         if end_time:
-            queryset = queryset.filter(end_time__lte=end_time)
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone
+            
+            # Parse the datetime string and make it timezone-aware if it's not already
+            parsed_end = parse_datetime(end_time)
+            if parsed_end and timezone.is_naive(parsed_end):
+                parsed_end = timezone.make_aware(parsed_end)
+            queryset = queryset.filter(end_time__lte=parsed_end or end_time)
         if is_booked is not None:
             if is_booked.lower() == 'true':
                 queryset = queryset.filter(is_booked=True)
@@ -278,11 +293,12 @@ class BookAppointmentView(generics.CreateAPIView):
         availability.is_booked = True
         availability.save()
 
-        # Save appointment and store for access in `create` (this is now handled by serializer)
+        # Save appointment with status 'pending'
         self.appointment = serializer.save(
             created_by=self.request.user,
             updated_by=self.request.user,
             is_deleted=False,
+            status='pending',  # Set status to 'pending' when booking
         )
 
         # Log appointment creation
@@ -309,6 +325,9 @@ class BookAppointmentView(generics.CreateAPIView):
             related_id=self.appointment.id
         )
 
+        # Schedule Celery task to expire appointment in 15 minutes
+        from .tasks import expire_pending_appointment
+        expire_pending_appointment.apply_async(args=[self.appointment.id], countdown=15*60)
 
 class UpdateAppointmentView(generics.UpdateAPIView):
     queryset = Appointment.objects.all()

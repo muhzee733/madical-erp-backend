@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from django.utils.timezone import make_aware
 import pytz
 from rest_framework.pagination import PageNumberPagination
+from django.db import transaction
 
 from users.serializers import DoctorProfileSerializer, PatientProfileSerializer, UserSerializer
 from .models import AppointmentAvailability, Appointment, AppointmentActionLog
@@ -289,17 +290,30 @@ class BookAppointmentView(generics.CreateAPIView):
         return Response(self.get_serializer(self.appointment).data, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):
-        availability = serializer.validated_data['availability']
-        availability.is_booked = True
-        availability.save()
+        # Use atomic transaction to prevent race conditions in booking
+        with transaction.atomic():
+            availability = serializer.validated_data['availability']
+            
+            # Lock the availability record and check if it's still free
+            availability = AppointmentAvailability.objects.select_for_update().get(
+                id=availability.id
+            )
+            
+            if availability.is_booked:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("This time slot has been booked by another user.")
+            
+            # Mark as booked
+            availability.is_booked = True
+            availability.save(update_fields=['is_booked'])
 
-        # Save appointment with status 'pending'
-        self.appointment = serializer.save(
-            created_by=self.request.user,
-            updated_by=self.request.user,
-            is_deleted=False,
-            status='pending',  # Set status to 'pending' when booking
-        )
+            # Save appointment with status 'pending'
+            self.appointment = serializer.save(
+                created_by=self.request.user,
+                updated_by=self.request.user,
+                is_deleted=False,
+                status='pending',  # Set status to 'pending' when booking
+            )
 
         # Log appointment creation
         AppointmentActionLog.objects.create(
@@ -372,22 +386,34 @@ class CancelAppointmentView(APIView):
         else:
             return Response({"error": "Unauthorized role."}, status=403)
 
-        # Cancel the appointment
-        appointment.status = cancel_status
-        appointment.updated_by = user        
-        appointment.save()
+        # Cancel the appointment atomically
+        with transaction.atomic():
+            # Lock the appointment
+            appointment = Appointment.objects.select_for_update().get(id=appointment.id)
+            
+            # Check if appointment can be cancelled
+            if appointment.status in ['cancelled_by_patient', 'cancelled_by_doctor', 'cancelled_by_admin', 'completed']:
+                return Response({
+                    "error": f"Cannot cancel appointment with status '{appointment.status}'"
+                }, status=400)
+            
+            appointment.status = cancel_status
+            appointment.updated_by = user        
+            appointment.save(update_fields=['status', 'updated_by', 'updated_at'])
 
-        # Free the availability slot
-        availability = appointment.availability
-        availability.is_booked = False
-        availability.save()
+            # Free the availability slot
+            availability = AppointmentAvailability.objects.select_for_update().get(
+                id=appointment.availability.id
+            )
+            availability.is_booked = False
+            availability.save(update_fields=['is_booked'])
 
-        # Log the cancellation
-        AppointmentActionLog.objects.create(
-            appointment=appointment,
-            action_type="cancelled",
-            performed_by=user
-        )
+            # Log the cancellation
+            AppointmentActionLog.objects.create(
+                appointment=appointment,
+                action_type="cancelled",
+                performed_by=user
+            )
 
         return Response({"message": f"Appointment cancelled by {user.role}."}, status=200)
 
@@ -401,47 +427,104 @@ class RescheduleAppointmentView(APIView):
         if not new_availability_id:
             return Response({"error": "New availability ID is required."}, status=400)
 
-        # Identify and authorize the old appointment
-        if user.role == 'patient':
-            old_appointment = get_object_or_404(Appointment, id=appointment_id, patient=user)
-        elif user.role == 'doctor':
-            old_appointment = get_object_or_404(Appointment, id=appointment_id, availability__doctor=user)
-        elif user.role == 'admin':
-            old_appointment = get_object_or_404(Appointment, id=appointment_id)
-        else:
-            return Response({"error": "Unauthorized role."}, status=403)
+        try:
+            # Use atomic transaction to prevent race conditions
+            with transaction.atomic():
+                # Identify and authorize the old appointment with select_for_update
+                if user.role == 'patient':
+                    old_appointment = get_object_or_404(
+                        Appointment.objects.select_for_update(), 
+                        id=appointment_id, 
+                        patient=user
+                    )
+                elif user.role == 'doctor':
+                    old_appointment = get_object_or_404(
+                        Appointment.objects.select_for_update(), 
+                        id=appointment_id, 
+                        availability__doctor=user
+                    )
+                elif user.role == 'admin':
+                    old_appointment = get_object_or_404(
+                        Appointment.objects.select_for_update(), 
+                        id=appointment_id
+                    )
+                else:
+                    return Response({"error": "Unauthorized role."}, status=403)
 
-        # Fetch the new availability
-        new_availability = get_object_or_404(AppointmentAvailability, id=new_availability_id, is_booked=False)
+                # Check if appointment can be rescheduled
+                if old_appointment.status in ['cancelled', 'completed', 'rescheduled']:
+                    return Response({
+                        "error": f"Cannot reschedule appointment with status '{old_appointment.status}'"
+                    }, status=400)
 
-        # Mark old as rescheduled
-        old_appointment.status = 'rescheduled'
-        old_appointment.updated_by = user
-        old_appointment.save()
+                # Fetch and lock the new availability to prevent race conditions
+                try:
+                    new_availability = AppointmentAvailability.objects.select_for_update().get(
+                        id=new_availability_id, 
+                        is_booked=False
+                    )
+                except AppointmentAvailability.DoesNotExist:
+                    return Response({
+                        "error": "Selected time slot is no longer available or does not exist."
+                    }, status=400)
 
-        old_appointment.availability.is_booked = False
-        old_appointment.availability.save()
+                # Double-check availability is still free (race condition protection)
+                if new_availability.is_booked:
+                    return Response({
+                        "error": "Selected time slot has been booked by another user."
+                    }, status=400)
 
-        # Create the new appointment
-        new_appointment = Appointment.objects.create(
-            availability=new_availability,
-            patient=old_appointment.patient,
-            status='booked',
-            rescheduled_from=old_appointment,
-            created_by=user,
-            is_deleted=False
-        )
-        new_availability.is_booked = True
-        new_availability.save()
+                # Get old availability with lock
+                old_availability = AppointmentAvailability.objects.select_for_update().get(
+                    id=old_appointment.availability.id
+                )
 
-        # Log the action
-        AppointmentActionLog.objects.create(
-            appointment=new_appointment,
-            action_type="rescheduled",
-            performed_by=user
-        )
+                # Perform the reschedule operations atomically
+                # 1. Mark old appointment as rescheduled
+                old_appointment.status = 'rescheduled'
+                old_appointment.updated_by = user
+                old_appointment.save(update_fields=['status', 'updated_by', 'updated_at'])
 
-        return Response({"message": f"Appointment rescheduled by {user.role}."}, status=200)
+                # 2. Free the old availability slot
+                old_availability.is_booked = False
+                old_availability.save(update_fields=['is_booked'])
+
+                # 3. Create the new appointment
+                new_appointment = Appointment.objects.create(
+                    availability=new_availability,
+                    patient=old_appointment.patient,
+                    status='booked',
+                    rescheduled_from=old_appointment,
+                    created_by=user,
+                    is_deleted=False
+                )
+
+                # 4. Book the new availability slot
+                new_availability.is_booked = True
+                new_availability.save(update_fields=['is_booked'])
+
+                # 5. Log the action
+                AppointmentActionLog.objects.create(
+                    appointment=new_appointment,
+                    action_type="rescheduled",
+                    performed_by=user
+                )
+
+                return Response({
+                    "message": f"Appointment rescheduled successfully by {user.role}.",
+                    "new_appointment_id": str(new_appointment.id),
+                    "old_appointment_id": str(old_appointment.id)
+                }, status=200)
+
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Reschedule error for appointment {appointment_id}: {str(e)}")
+            
+            return Response({
+                "error": "An error occurred while rescheduling the appointment. Please try again."
+            }, status=500)
 
 class ListMyAppointmentsView(generics.ListAPIView):
     serializer_class = AppointmentSerializer

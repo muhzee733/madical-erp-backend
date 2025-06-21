@@ -399,7 +399,7 @@ class CancelAppointmentView(APIView):
             
             appointment.status = cancel_status
             appointment.updated_by = user        
-            appointment.save(update_fields=['status', 'updated_by', 'updated_at'])
+            appointment.save(update_fields=['status', 'updated_by'])
 
             # Free the availability slot
             availability = AppointmentAvailability.objects.select_for_update().get(
@@ -483,7 +483,7 @@ class RescheduleAppointmentView(APIView):
                 # 1. Mark old appointment as rescheduled
                 old_appointment.status = 'rescheduled'
                 old_appointment.updated_by = user
-                old_appointment.save(update_fields=['status', 'updated_by', 'updated_at'])
+                old_appointment.save(update_fields=['status', 'updated_by'])
 
                 # 2. Free the old availability slot
                 old_availability.is_booked = False

@@ -218,7 +218,7 @@ class MarkAppointmentNoShowView(APIView):
 class ListMyAvailabilityView(generics.ListAPIView):
     serializer_class = AppointmentAvailabilitySerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = MyAvailabilityPagination  # Enable page & page_size query params
+    # pagination_class = MyAvailabilityPagination  # Enable page & page_size query params
 
     def get_queryset(self):
         user = self.request.user

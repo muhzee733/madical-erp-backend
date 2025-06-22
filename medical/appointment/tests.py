@@ -885,7 +885,8 @@ class AppointmentRescheduleAndStatusTests(APITestCase):
         response = self.client.post(reverse('reschedule-appointment', args=[self.original_appointment_id]), {
             "new_availability_id": str(self.new_slot.id)
         }, format='json')
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no longer available', response.data['error'])
 
     # ------------------- COMPLETE -------------------
 

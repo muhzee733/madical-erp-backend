@@ -23,33 +23,6 @@ class AppointmentAvailability(models.Model):
 
     def __str__(self):
         return f"{self.doctor.email} | {self.start_time} - {self.end_time}"
-    
-    def sync_booking_status(self):
-        """
-        Fix for race condition bug: Sync is_booked flag with actual appointment existence
-        This method can be called to fix data inconsistencies
-        """
-        has_appointment = hasattr(self, 'appointment')
-        if has_appointment and not self.is_booked:
-            # Case: Appointment exists but is_booked=False (data inconsistency)
-            self.is_booked = True
-            self.save(update_fields=['is_booked'])
-            return "Fixed: Set is_booked=True"
-        elif not has_appointment and self.is_booked:
-            # Case: No appointment but is_booked=True (orphaned booking flag)
-            self.is_booked = False
-            self.save(update_fields=['is_booked'])
-            return "Fixed: Set is_booked=False"
-        return "No fix needed"
-    
-    def is_actually_available(self):
-        """
-        Race condition bug fix: Check if slot is truly available
-        Returns True only if both conditions are met:
-        1. is_booked = False
-        2. No appointment exists
-        """
-        return not self.is_booked and not hasattr(self, 'appointment')
 
 
 class Appointment(models.Model):

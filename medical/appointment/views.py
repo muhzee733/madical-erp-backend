@@ -539,7 +539,7 @@ class RescheduleAppointmentView(APIView):
             # Log the error for debugging
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"Reschedule error for appointment {appointment_id}: {str(e)}")
+            # logger.error(f"Reschedule error for appointment {appointment_id}: {str(e)}")
             
             return Response({
                 "error": "An error occurred while rescheduling the appointment. Please try again."

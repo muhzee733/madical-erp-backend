@@ -299,21 +299,40 @@ class BookAppointmentView(generics.CreateAPIView):
                 id=availability.id
             )
             
+            # CRITICAL BUG FIX: Check for existing appointment first (prevents OneToOneField violation)
+            if hasattr(availability, 'appointment'):
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("This appointment slot is already taken.")
+            
             if availability.is_booked:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError("This time slot has been booked by another user.")
             
-            # Mark as booked
-            availability.is_booked = True
-            availability.save(update_fields=['is_booked'])
-
-            # Save appointment with status 'pending'
-            self.appointment = serializer.save(
-                created_by=self.request.user,
-                updated_by=self.request.user,
-                is_deleted=False,
-                status='pending',  # Set status to 'pending' when booking
-            )
+            # CRITICAL BUG FIX: Create appointment FIRST, then mark as booked
+            # This prevents orphaned is_booked=True flags if appointment creation fails
+            try:
+                self.appointment = serializer.save(
+                    created_by=self.request.user,
+                    updated_by=self.request.user,
+                    is_deleted=False,
+                    status='pending',  # Set status to 'pending' when booking
+                )
+                
+                # Only mark as booked AFTER successful appointment creation
+                availability.is_booked = True
+                availability.save(update_fields=['is_booked'])
+                
+            except Exception as e:
+                # If appointment creation fails, ensure availability remains unboked
+                # This prevents data inconsistency
+                availability.refresh_from_db()
+                if availability.is_booked:
+                    availability.is_booked = False
+                    availability.save(update_fields=['is_booked'])
+                
+                # Re-raise the original exception
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError(f"Failed to create appointment: {str(e)}")
 
         # Log appointment creation
         AppointmentActionLog.objects.create(

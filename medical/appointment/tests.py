@@ -1,6 +1,7 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 from django.utils.timezone import now, timedelta, make_aware
+from django.utils import timezone
 from users.models import DoctorProfile, PatientProfile, User
 from appointment.models import AppointmentActionLog, AppointmentAvailability, Appointment
 from django.urls import reverse
@@ -1819,3 +1820,149 @@ class AppointmentValidationTests(APITestCase):
         
         # Should succeed (patient booking for themselves)
         self.assertEqual(response.status_code, 201)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════
+# RACE CONDITION BUG FIX TESTS
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+class RaceConditionBugFixTests(APITestCase):
+    """Test the race condition bug fix in appointment booking - prevents IntegrityError 1062"""
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create test doctor
+        self.doctor = User.objects.create_user(
+            email='racedoctor@example.com',
+            password='testpass123',
+            role='doctor',
+            first_name='Race',
+            last_name='Doctor'
+        )
+        
+        # Create test patients
+        self.patient1 = User.objects.create_user(
+            email='racepatient1@example.com',
+            password='testpass123',
+            role='patient',
+            first_name='Race Patient',
+            last_name='One'
+        )
+        
+        self.patient2 = User.objects.create_user(
+            email='racepatient2@example.com',
+            password='testpass123',
+            role='patient',
+            first_name='Race Patient',
+            last_name='Two'
+        )
+        
+        # Create availability slot
+        future_time = timezone.now() + timedelta(days=1)
+        self.availability = AppointmentAvailability.objects.create(
+            doctor=self.doctor,
+            start_time=future_time,
+            end_time=future_time + timedelta(minutes=15),
+            slot_type='short',
+            timezone='Australia/Brisbane'
+        )
+    
+    def get_authenticated_client(self, user):
+        """Get API client with authentication token"""
+        client = APIClient()
+        response = client.post('/api/v1/users/login/', {
+            'email': user.email,
+            'password': 'testpass123'
+        })
+        self.assertEqual(response.status_code, 200, f"Login failed for {user.email}")
+        
+        token = response.data['access']
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        return client
+    
+    def test_duplicate_booking_prevention_via_api(self):
+        """Test that the API prevents duplicate bookings gracefully (no IntegrityError 1062)"""
+        # First patient books the slot
+        client1 = self.get_authenticated_client(self.patient1)
+        response1 = client1.post('/api/v1/appointments/', {
+            'availability_id': str(self.availability.id)
+        })
+        
+        self.assertEqual(response1.status_code, 201, "First booking should succeed")
+        
+        # Second patient tries to book the same slot
+        client2 = self.get_authenticated_client(self.patient2)
+        response2 = client2.post('/api/v1/appointments/', {
+            'availability_id': str(self.availability.id)
+        })
+        
+        # Should fail gracefully (not with IntegrityError)
+        self.assertEqual(response2.status_code, 400, "Second booking should fail with 400")
+        
+        # Check that error message is user-friendly (not IntegrityError)
+        error_message = str(response2.data)
+        self.assertNotIn("IntegrityError", error_message, "Should not contain IntegrityError")
+        self.assertNotIn("1062", error_message, "Should not contain MySQL error code")
+        self.assertIn("already taken", error_message.lower(), "Should mention slot is taken")
+        
+        # Verify database state
+        appointments = Appointment.objects.filter(availability=self.availability)
+        self.assertEqual(appointments.count(), 1, "Should have exactly 1 appointment")
+        
+        self.availability.refresh_from_db()
+        self.assertTrue(self.availability.is_booked, "Availability should be marked as booked")
+    
+    def test_booking_slot_with_existing_appointment_via_api(self):
+        """Test booking a slot that already has an appointment but wrong is_booked flag"""
+        # Create appointment directly (simulate data inconsistency)
+        existing_appointment = Appointment.objects.create(
+            availability=self.availability,
+            patient=self.patient1,
+            status='booked'
+        )
+        
+        # But leave is_booked = False (simulate the bug condition)
+        self.availability.is_booked = False
+        self.availability.save()
+        
+        # Patient 2 tries to book via API
+        client2 = self.get_authenticated_client(self.patient2)
+        response = client2.post('/api/v1/appointments/', {
+            'availability_id': str(self.availability.id)
+        })
+        
+        # Should fail gracefully with clear error message
+        self.assertEqual(response.status_code, 400, "Should fail with 400 error")
+        
+        error_message = str(response.data)
+        self.assertIn("already taken", error_message.lower(), "Should mention slot is taken")
+        self.assertNotIn("IntegrityError", error_message, "Should not contain IntegrityError")
+        
+        # Verify still only 1 appointment
+        appointments = Appointment.objects.filter(availability=self.availability)
+        self.assertEqual(appointments.count(), 1, "Should still have exactly 1 appointment")
+    
+    
+    def test_serializer_validation_prevents_integrity_error(self):
+        """Test that serializer validation prevents OneToOneField violations"""
+        # Create appointment first
+        appointment = Appointment.objects.create(
+            availability=self.availability,
+            patient=self.patient1,
+            status='booked'
+        )
+        
+        # Try to book via API (should be caught by serializer validation)
+        client2 = self.get_authenticated_client(self.patient2)
+        response = client2.post('/api/v1/appointments/', {
+            'availability_id': str(self.availability.id)
+        })
+        
+        # Should fail with validation error, not IntegrityError
+        self.assertEqual(response.status_code, 400)
+        error_message = str(response.data)
+        self.assertIn("already taken", error_message.lower())
+        self.assertNotIn("IntegrityError", error_message)
+        self.assertNotIn("1062", error_message)
+
+

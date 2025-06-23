@@ -125,6 +125,10 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
         # Only validate availability if it's being updated
         if availability:
+            # CRITICAL BUG FIX: Check for existing appointment first (prevents OneToOneField violation)
+            if hasattr(availability, 'appointment'):
+                raise serializers.ValidationError("This appointment slot is already taken.")
+                
             if availability.is_booked:
                 raise serializers.ValidationError("This slot is already booked.")
 
@@ -137,7 +141,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 availability__end_time__gt=new_start,
             ).exclude(
                 pk=self.instance.pk if self.instance else None
-            ).exclude(status__in=['cancelled_by_patient', 'cancelled_by_doctor'])
+            ).exclude(status__in=['cancelled_by_patient', 'cancelled_by_doctor', 'cancelled_by_admin'])
 
             if overlapping.exists():
                 raise serializers.ValidationError("You already have an appointment during this time.")

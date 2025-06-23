@@ -12,6 +12,7 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ['id', 'room', 'sender', 'sender_name', 'message', 'timestamp', 'is_read', 'read_by_count']
+        read_only_fields = ['id', 'room', 'sender', 'sender_name', 'timestamp', 'is_read', 'read_by_count']
 
     def get_is_read(self, obj):
         """Check if current user has read this message"""
